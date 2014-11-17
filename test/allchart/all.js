@@ -105,7 +105,7 @@ if (developMode) {
 }
 else {
     // for echarts online home page
-    var fileLocation = '../../build/echarts-map';
+    var fileLocation = '../../build/echarts-original-map';
     require.config({
         paths:{ 
             echarts: fileLocation,
