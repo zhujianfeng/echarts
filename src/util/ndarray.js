@@ -249,7 +249,7 @@ NDArray.prototype = {
 
     /**
      * Get array dimension.
-     * @return {[type]} [description]
+     * @return {number} [description]
      */
     dimension : function () {
         return this._shape.length;
@@ -1387,7 +1387,7 @@ NDArray.prototype = {
     /**
      * equal
      */
-    equal : function (rightOperand) {
+    equal : function (rightOperand, out) {
         return this.binaryOperation(
             this, rightOperand, E_EQL, out
         );

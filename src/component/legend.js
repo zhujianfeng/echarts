@@ -38,6 +38,9 @@ define(function (require) {
         self._legendSelected = function (param) {
             self.__legendSelected(param);
         };
+        self._dispatchHoverLink = function(param) {
+            return self.__dispatchHoverLink(param);
+        };
         
         this._colorIndex = 0;
         this._colorMap = {};
@@ -47,8 +50,11 @@ define(function (require) {
     }
     
     Legend.prototype = {
-        type : ecConfig.COMPONENT_TYPE_LEGEND,
-        _buildShape : function () {
+        type: ecConfig.COMPONENT_TYPE_LEGEND,
+        _buildShape: function () {
+            if (!this.legendOption.show) {
+                return;
+            }
             // 图例元素组的位置参数，通过计算所得x, y, width, height
             this._itemGroupLocation = this._getItemGroupLocation();
 
@@ -63,7 +69,7 @@ define(function (require) {
         /**
          * 构建所有图例元素
          */
-        _buildItem : function () {
+        _buildItem: function () {
             var data = this.legendOption.data;
             var dataLength = data.length;
             var itemName;
@@ -73,6 +79,7 @@ define(function (require) {
             var textStyle  = this.legendOption.textStyle;
             var dataTextStyle;
             var dataFont;
+            var formattedName;
 
             var zrWidth = this.zr.getWidth();
             var zrHeight = this.zr.getHeight();
@@ -83,7 +90,7 @@ define(function (require) {
             var itemGap = this.legendOption.itemGap;
             var color;
 
-            if (this.legendOption.orient == 'vertical' && this.legendOption.x == 'right') {
+            if (this.legendOption.orient === 'vertical' && this.legendOption.x === 'right') {
                 lastX = this._itemGroupLocation.x
                         + this._itemGroupLocation.width
                         - itemWidth;
@@ -97,13 +104,14 @@ define(function (require) {
                 dataFont = this.getFont(dataTextStyle);
                 
                 itemName = this._getName(data[i]);
-                if (itemName === '') {
-                    if (this.legendOption.orient == 'horizontal') {
+                formattedName = this._getFormatterName(itemName);
+                if (itemName === '') { // 别帮我代码优化
+                    if (this.legendOption.orient === 'horizontal') {
                         lastX = this._itemGroupLocation.x;
                         lastY += itemHeight + itemGap;
                     }
                     else {
-                        this.legendOption.x == 'right'
+                        this.legendOption.x === 'right'
                             ? lastX -= this._itemGroupLocation.maxWidth + itemGap
                             : lastX += this._itemGroupLocation.maxWidth + itemGap;
                         lastY = this._itemGroupLocation.y;
@@ -114,11 +122,11 @@ define(function (require) {
                 
                 color = this.getColor(itemName);
 
-                if (this.legendOption.orient == 'horizontal') {
+                if (this.legendOption.orient === 'horizontal') {
                     if (zrWidth - lastX < 200   // 最后200px做分行预判
-                        && (itemWidth + 5 + zrArea.getTextWidth(itemName, dataFont)
+                        && (itemWidth + 5 + zrArea.getTextWidth(formattedName, dataFont)
                             // 分行的最后一个不用算itemGap
-                            + (i == dataLength - 1 || data[i+1] === '' ? 0 : itemGap)
+                            + (i === dataLength - 1 || data[i + 1] === '' ? 0 : itemGap)
                            ) >= zrWidth - lastX
                     ) {
                         lastX = this._itemGroupLocation.x;
@@ -129,10 +137,11 @@ define(function (require) {
                     if (zrHeight - lastY < 200   // 最后200px做分行预判
                         && (itemHeight
                             // 分行的最后一个不用算itemGap
-                            + (i == dataLength - 1 || data[i+1] === '' ? 0 : itemGap)
-                           ) >= zrHeight - lastY
+                            + (i === dataLength - 1 || data[i + 1] === '' ? 0 : itemGap)
+                           ) 
+                           >= zrHeight - lastY
                     ) {
-                        this.legendOption.x == 'right'
+                        this.legendOption.x === 'right'
                         ? lastX -= this._itemGroupLocation.maxWidth + itemGap
                         : lastX += this._itemGroupLocation.maxWidth + itemGap;
                         lastY = this._itemGroupLocation.y;
@@ -152,28 +161,28 @@ define(function (require) {
 
                 // 文字
                 textShape = {
-                    // shape : 'text',
-                    zlevel : this._zlevelBase,
-                    style : {
-                        x : lastX + itemWidth + 5,
-                        y : lastY + itemHeight / 2,
-                        color : this._selectedMap[itemName]
+                    // shape: 'text',
+                    zlevel: this._zlevelBase,
+                    style: {
+                        x: lastX + itemWidth + 5,
+                        y: lastY + itemHeight / 2,
+                        color: this._selectedMap[itemName]
                                 ? (dataTextStyle.color === 'auto' ? color : dataTextStyle.color)
                                 : '#ccc',
-                        text: itemName,
+                        text: formattedName,
                         textFont: dataFont,
                         textBaseline: 'middle'
                     },
-                    highlightStyle : {
-                        color : color,
+                    highlightStyle: {
+                        color: color,
                         brushType: 'fill'
                     },
-                    hoverable : !!this.legendOption.selectedMode,
-                    clickable : !!this.legendOption.selectedMode
+                    hoverable: !!this.legendOption.selectedMode,
+                    clickable: !!this.legendOption.selectedMode
                 };
 
-                if (this.legendOption.orient == 'vertical'
-                    && this.legendOption.x == 'right'
+                if (this.legendOption.orient === 'vertical'
+                    && this.legendOption.x === 'right'
                 ) {
                     textShape.style.x -= (itemWidth + 10);
                     textShape.style.textAlign = 'right';
@@ -184,16 +193,16 @@ define(function (require) {
                 
                 if (this.legendOption.selectedMode) {
                     itemShape.onclick = textShape.onclick = this._legendSelected;
-                    itemShape.onmouseover =  textShape.onmouseover = this.hoverConnect;
+                    itemShape.onmouseover =  textShape.onmouseover = this._dispatchHoverLink;
                     itemShape.hoverConnect = textShape.id;
                     textShape.hoverConnect = itemShape.id;
                 }
                 this.shapeList.push(itemShape);
                 this.shapeList.push(textShape);
 
-                if (this.legendOption.orient == 'horizontal') {
+                if (this.legendOption.orient === 'horizontal') {
                     lastX += itemWidth + 5
-                             + zrArea.getTextWidth(itemName, dataFont)
+                             + zrArea.getTextWidth(formattedName, dataFont)
                              + itemGap;
                 }
                 else {
@@ -201,8 +210,8 @@ define(function (require) {
                 }
             }
         
-            if (this.legendOption.orient == 'horizontal'
-                && this.legendOption.x == 'center'
+            if (this.legendOption.orient === 'horizontal'
+                && this.legendOption.x === 'center'
                 && lastY != this._itemGroupLocation.y
             ) {
                 // 多行橫排居中优化
@@ -210,16 +219,36 @@ define(function (require) {
             }
         },
         
-        _getName : function(data) {
+        _getName: function(data) {
             return typeof data.name != 'undefined' ? data.name : data;
+        },
+
+        _getFormatterName: function(itemName) {
+            var formatter = this.legendOption.formatter;
+            var formattedName;
+            if (typeof formatter === 'function') {
+                formattedName = formatter.call(this.myChart, itemName);
+            }
+            else if (typeof formatter === 'string') {
+                formattedName = formatter.replace('{name}', itemName);
+            }
+            else {
+                formattedName = itemName;
+            }
+            return formattedName;
+        },
+
+        _getFormatterNameFromData: function(data) {
+            var itemName = this._getName(data);
+            return this._getFormatterName(itemName);
         },
         
         // 多行橫排居中优化
-        _mLineOptimize : function () {
+        _mLineOptimize: function () {
             var lineOffsetArray = []; // 每行宽度
             var lastX = this._itemGroupLocation.x;
             for (var i = 2, l = this.shapeList.length; i < l; i++) {
-                if (this.shapeList[i].style.x == lastX) {
+                if (this.shapeList[i].style.x === lastX) {
                     lineOffsetArray.push(
                         (
                             this._itemGroupLocation.width 
@@ -234,7 +263,7 @@ define(function (require) {
                         ) / 2
                     );
                 }
-                else if (i == l - 1) {
+                else if (i === l - 1) {
                     lineOffsetArray.push(
                         (
                             this._itemGroupLocation.width 
@@ -252,7 +281,7 @@ define(function (require) {
             }
             var curLineIndex = -1;
             for (var i = 1, l = this.shapeList.length; i < l; i++) {
-                if (this.shapeList[i].style.x == lastX) {
+                if (this.shapeList[i].style.x === lastX) {
                     curLineIndex++;
                 }
                 if (lineOffsetArray[curLineIndex] === 0) {
@@ -264,24 +293,24 @@ define(function (require) {
             }
         },
 
-        _buildBackground : function () {
+        _buildBackground: function () {
             var pTop = this.legendOption.padding[0];
             var pRight = this.legendOption.padding[1];
             var pBottom = this.legendOption.padding[2];
             var pLeft = this.legendOption.padding[3];
 
             this.shapeList.push(new RectangleShape({
-                zlevel : this._zlevelBase,
+                zlevel: this._zlevelBase,
                 hoverable :false,
-                style : {
-                    x : this._itemGroupLocation.x - pLeft,
-                    y : this._itemGroupLocation.y - pTop,
-                    width : this._itemGroupLocation.width + pLeft + pRight,
-                    height : this._itemGroupLocation.height + pTop + pBottom,
-                    brushType : this.legendOption.borderWidth === 0 ? 'fill' : 'both',
-                    color : this.legendOption.backgroundColor,
-                    strokeColor : this.legendOption.borderColor,
-                    lineWidth : this.legendOption.borderWidth
+                style: {
+                    x: this._itemGroupLocation.x - pLeft,
+                    y: this._itemGroupLocation.y - pTop,
+                    width: this._itemGroupLocation.width + pLeft + pRight,
+                    height: this._itemGroupLocation.height + pTop + pBottom,
+                    brushType: this.legendOption.borderWidth === 0 ? 'fill' : 'both',
+                    color: this.legendOption.backgroundColor,
+                    strokeColor: this.legendOption.borderColor,
+                    lineWidth: this.legendOption.borderWidth
                 }
             }));
         },
@@ -289,7 +318,7 @@ define(function (require) {
         /**
          * 根据选项计算图例实体的位置坐标
          */
-        _getItemGroupLocation : function () {
+        _getItemGroupLocation: function () {
             var data = this.legendOption.data;
             var dataLength = data.length;
             var itemGap = this.legendOption.itemGap;
@@ -305,7 +334,7 @@ define(function (require) {
             
             var temp = 0; // 宽高计算，用于多行判断
             var maxWidth = 0; // 垂直布局有用
-            if (this.legendOption.orient == 'horizontal') {
+            if (this.legendOption.orient === 'horizontal') {
                 // 水平布局，计算总宽度
                 totalHeight = itemHeight;
                 for (var i = 0; i < dataLength; i++) {
@@ -322,13 +351,9 @@ define(function (require) {
                         temp = 0;
                         continue;
                     }
-                    dataTextStyle = zrUtil.merge(
-                        data[i].textStyle || {},
-                        textStyle
-                    );
                     temp += itemWidth
                             + zrArea.getTextWidth(
-                                  this._getName(data[i]),
+                                  this._getFormatterNameFromData(data[i]),
                                   data[i].textStyle 
                                   ? this.getFont(zrUtil.merge(
                                         data[i].textStyle || {},
@@ -353,7 +378,7 @@ define(function (require) {
                     maxWidth = Math.max(
                         maxWidth,
                         zrArea.getTextWidth(
-                            this._getName(data[i]),
+                            this._getFormatterNameFromData(data[i]),
                             data[i].textStyle 
                             ? this.getFont(zrUtil.merge(
                                   data[i].textStyle || {},
@@ -434,85 +459,84 @@ define(function (require) {
             }
 
             return {
-                x : x,
-                y : y,
-                width : totalWidth,
-                height : totalHeight,
-                maxWidth : maxWidth
+                x: x,
+                y: y,
+                width: totalWidth,
+                height: totalHeight,
+                maxWidth: maxWidth
             };
         },
 
         /**
          * 根据名称返回series数据或data
          */
-        _getSomethingByName : function (name) {
+        _getSomethingByName: function (name) {
             var series = this.option.series;
             var data;
             for (var i = 0, l = series.length; i < l; i++) {
-                if (series[i].name == name) {
+                if (series[i].name === name) {
                     // 系列名称优先
                     return {
-                        type : series[i].type,
-                        series : series[i],
-                        seriesIndex : i,
-                        data : null,
-                        dataIndex : -1
+                        type: series[i].type,
+                        series: series[i],
+                        seriesIndex: i,
+                        data: null,
+                        dataIndex: -1
                     };
                 }
 
                 if (
-                    series[i].type == ecConfig.CHART_TYPE_PIE 
-                    || series[i].type == ecConfig.CHART_TYPE_RADAR
-                    || series[i].type == ecConfig.CHART_TYPE_CHORD
-                    || series[i].type == ecConfig.CHART_TYPE_FORCE
-                    || series[i].type == ecConfig.CHART_TYPE_FUNNEL
+                    series[i].type === ecConfig.CHART_TYPE_PIE 
+                    || series[i].type === ecConfig.CHART_TYPE_RADAR
+                    || series[i].type === ecConfig.CHART_TYPE_CHORD
+                    || series[i].type === ecConfig.CHART_TYPE_FORCE
+                    || series[i].type === ecConfig.CHART_TYPE_FUNNEL
                 ) {
-                    data = series[i].type != ecConfig.CHART_TYPE_FORCE
-                           ? series[i].data         // 饼图、雷达图、和弦图得查找里面的数据名字
-                           : series[i].categories;  // 力导布局查找categories配置
+                    data = series[i].categories || series[i].data || series[i].nodes;
+
                     for (var j = 0, k = data.length; j < k; j++) {
-                        if (data[j].name == name) {
+                        if (data[j].name === name) {
                             return {
-                                type : series[i].type,
-                                series : series[i],
-                                seriesIndex : i,
-                                data : data[j],
-                                dataIndex : j
+                                type: series[i].type,
+                                series: series[i],
+                                seriesIndex: i,
+                                data: data[j],
+                                dataIndex: j
                             };
                         }
                     }
                 }
             }
             return {
-                type : 'bar',
-                series : null,
-                seriesIndex : -1,
-                data : null,
-                dataIndex : -1
+                type: 'bar',
+                series: null,
+                seriesIndex: -1,
+                data: null,
+                dataIndex: -1
             };
         },
         
-        _getItemShapeByType : function (x, y, width, height, color, itemType, defaultColor) {
+        _getItemShapeByType: function (x, y, width, height, color, itemType, defaultColor) {
             var highlightColor = color === '#ccc' ? defaultColor : color;
             var itemShape = {
-                zlevel : this._zlevelBase,
-                style : {
-                    iconType : 'legendicon' + itemType,
-                    x : x,
-                    y : y,
-                    width : width,
-                    height : height,
-                    color : color,
-                    strokeColor : color,
-                    lineWidth : 2
+                zlevel: this._zlevelBase,
+                style: {
+                    iconType: 'legendicon' + itemType,
+                    x: x,
+                    y: y,
+                    width: width,
+                    height: height,
+                    color: color,
+                    strokeColor: color,
+                    lineWidth: 2
                 },
                 highlightStyle: {
-                    color : highlightColor,
-                    strokeColor : highlightColor,
-                    lineWidth : 1
+                    color: highlightColor,
+                    strokeColor: highlightColor,
+                    lineWidth: 1
                 },
-                hoverable : this.legendOption.selectedMode,
-                clickable : this.legendOption.selectedMode
+                hoverable: this.legendOption.selectedMode,
+                clickable: this.legendOption.selectedMode
             };
             
             var imageLocation;
@@ -524,15 +548,15 @@ define(function (require) {
             }
             // 特殊设置
             switch (itemType) {
-                case 'line' :
+                case 'line':
                     itemShape.style.brushType = 'stroke';
                     itemShape.highlightStyle.lineWidth = 3;
                     break;
-                case 'radar' :
-                case 'scatter' :   
+                case 'radar':
+                case 'scatter':
                     itemShape.highlightStyle.lineWidth = 3;
                     break;
-                case 'k' :
+                case 'k':
                     itemShape.style.brushType = 'both';
                     itemShape.highlightStyle.lineWidth = 3;
                     itemShape.highlightStyle.color =
@@ -543,7 +567,7 @@ define(function (require) {
                            || '#ff3200')
                         : color;
                     break;
-                case 'image' :
+                case 'image':
                     itemShape.style.iconType = 'image';
                     itemShape.style.image = imageLocation;
                     if (color === '#ccc') {
@@ -554,7 +578,7 @@ define(function (require) {
             return itemShape;
         },
 
-        __legendSelected : function (param) {
+        __legendSelected: function (param) {
             var itemName = param.target._name;
             if (this.legendOption.selectedMode === 'single') {
                 for (var k in this._selectedMap) {
@@ -566,17 +590,32 @@ define(function (require) {
                 ecConfig.EVENT.LEGEND_SELECTED,
                 param.event,
                 {
-                    selected : this._selectedMap,
-                    target : itemName
+                    selected: this._selectedMap,
+                    target: itemName
                 },
                 this.myChart
             );
         },
-
+        
+        /**
+         * 产生hover link事件 
+         */
+        __dispatchHoverLink : function(param) {
+            this.messageCenter.dispatch(
+                ecConfig.EVENT.LEGEND_HOVERLINK,
+                param.event,
+                {
+                    target: param.target._name
+                },
+                this.myChart
+            );
+            return;
+        },
+        
         /**
          * 刷新
          */
-        refresh : function (newOption) {
+        refresh: function (newOption) {
             if (newOption) {
                 this.option = newOption || this.option;
                 this.option.legend = this.reformOption(this.option.legend);
@@ -609,9 +648,9 @@ define(function (require) {
                     } 
                     else {
                         if (something.data
-                            && (something.type == ecConfig.CHART_TYPE_PIE
-                                || something.type == ecConfig.CHART_TYPE_FORCE
-                                || something.type == ecConfig.CHART_TYPE_FUNNEL)
+                            && (something.type === ecConfig.CHART_TYPE_PIE
+                                || something.type === ecConfig.CHART_TYPE_FORCE
+                                || something.type === ecConfig.CHART_TYPE_FUNNEL)
                         ) {
                             queryTarget = [something.data, something.series];
                         }
@@ -638,29 +677,29 @@ define(function (require) {
             this._buildShape();
         },
         
-        getRelatedAmount : function(name) {
+        getRelatedAmount: function(name) {
             var amount = 0;
             var series = this.option.series;
             var data;
             for (var i = 0, l = series.length; i < l; i++) {
-                if (series[i].name == name) {
+                if (series[i].name === name) {
                     // 系列名称优先
                     amount++;
                 }
 
                 if (
-                    series[i].type == ecConfig.CHART_TYPE_PIE 
-                    || series[i].type == ecConfig.CHART_TYPE_RADAR
-                    || series[i].type == ecConfig.CHART_TYPE_CHORD
-                    || series[i].type == ecConfig.CHART_TYPE_FORCE
-                    || series[i].type == ecConfig.CHART_TYPE_FUNNEL
+                    series[i].type === ecConfig.CHART_TYPE_PIE 
+                    || series[i].type === ecConfig.CHART_TYPE_RADAR
+                    || series[i].type === ecConfig.CHART_TYPE_CHORD
+                    || series[i].type === ecConfig.CHART_TYPE_FORCE
+                    || series[i].type === ecConfig.CHART_TYPE_FUNNEL
                 ) {
                     data = series[i].type != ecConfig.CHART_TYPE_FORCE
                            ? series[i].data         // 饼图、雷达图、和弦图得查找里面的数据名字
                            : series[i].categories;  // 力导布局查找categories配置
                     for (var j = 0, k = data.length; j < k; j++) {
-                        if (data[j].name == name && data[j].value != '-') {
-                            amount++
+                        if (data[j].name === name && data[j].value != '-') {
+                            amount++;
                         }
                     }
                 }
@@ -668,25 +707,25 @@ define(function (require) {
             return amount;
         },
 
-        setColor : function (legendName, color) {
+        setColor: function (legendName, color) {
             this._colorMap[legendName] = color;
         },
 
-        getColor : function (legendName) {
+        getColor: function (legendName) {
             if (!this._colorMap[legendName]) {
                 this._colorMap[legendName] = this.zr.getColor(this._colorIndex++);
             }
             return this._colorMap[legendName];
         },
         
-        hasColor : function (legendName) {
+        hasColor: function (legendName) {
             return this._colorMap[legendName] ? this._colorMap[legendName] : false;
         },
 
-        add : function (name, color){
+        add: function (name, color){
             var data = this.legendOption.data;
             for (var i = 0, dataLength = data.length; i < dataLength; i++) {
-                if (this._getName(data[i]) == name) {
+                if (this._getName(data[i]) === name) {
                     // 已有就不重复加了
                     return;
                 }
@@ -696,10 +735,10 @@ define(function (require) {
             this._selectedMap[name] = true;
         },
 
-        del : function (name){
+        del: function (name){
             var data = this.legendOption.data;
             for (var i = 0, dataLength = data.length; i < dataLength; i++) {
-                if (this._getName(data[i]) == name) {
+                if (this._getName(data[i]) === name) {
                     return this.legendOption.data.splice(i, 1);
                 }
             }
@@ -710,14 +749,14 @@ define(function (require) {
          * @param {Object} name
          * @param {Object} itemShape
          */
-        getItemShape : function (name) {
-            if (typeof name == 'undefined') {
+        getItemShape: function (name) {
+            if (name == null) {
                 return;
             }
             var shape;
             for (var i = 0, l = this.shapeList.length; i < l; i++) {
                 shape = this.shapeList[i];
-                if (shape._name == name && shape.type != 'text') {
+                if (shape._name === name && shape.type != 'text') {
                     return shape;
                 }
             }
@@ -728,11 +767,11 @@ define(function (require) {
          * @param {Object} name
          * @param {Object} itemShape
          */
-        setItemShape : function (name, itemShape) {
+        setItemShape: function (name, itemShape) {
             var shape;
             for (var i = 0, l = this.shapeList.length; i < l; i++) {
                 shape = this.shapeList[i];
-                if (shape._name == name && shape.type != 'text') {
+                if (shape._name === name && shape.type != 'text') {
                     if (!this._selectedMap[name]) {
                         itemShape.style.color = '#ccc';
                         itemShape.style.strokeColor = '#ccc';
@@ -742,7 +781,7 @@ define(function (require) {
             }
         },
 
-        isSelected : function (itemName) {
+        isSelected: function (itemName) {
             if (typeof this._selectedMap[itemName] != 'undefined') {
                 return this._selectedMap[itemName];
             }
@@ -752,11 +791,11 @@ define(function (require) {
             }
         },
         
-        getSelectedMap : function () {
+        getSelectedMap: function () {
             return this._selectedMap;
         },
         
-        setSelected : function(itemName, selectStatus) {
+        setSelected: function(itemName, selectStatus) {
             if (this.legendOption.selectedMode === 'single') {
                 for (var k in this._selectedMap) {
                     this._selectedMap[k] = false;
@@ -767,8 +806,8 @@ define(function (require) {
                 ecConfig.EVENT.LEGEND_SELECTED,
                 null,
                 {
-                    selected : this._selectedMap,
-                    target : itemName
+                    selected: this._selectedMap,
+                    target: itemName
                 },
                 this.myChart
             );
@@ -777,7 +816,7 @@ define(function (require) {
         /**
          * 图例选择
          */
-        onlegendSelected : function (param, status) {
+        onlegendSelected: function (param, status) {
             var legendSelected = param.selected;
             for (var itemName in legendSelected) {
                 if (this._selectedMap[itemName] != legendSelected[itemName]) {
@@ -791,70 +830,56 @@ define(function (require) {
     };
     
     var legendIcon = {
-        line : function (ctx, style) {
+        line: function (ctx, style) {
             var dy = style.height / 2;
             ctx.moveTo(style.x,     style.y + dy);
             ctx.lineTo(style.x + style.width,style.y + dy);
         },
         
-        pie : function (ctx, style) {
+        pie: function (ctx, style) {
             var x = style.x;
             var y = style.y;
             var width = style.width;
             var height = style.height;
             SectorShape.prototype.buildPath(ctx, {
-                x : x + width / 2,
-                y : y + height + 2,
-                r : height + 2,
-                r0 : 6,
-                startAngle : 45,
-                endAngle : 135
+                x: x + width / 2,
+                y: y + height + 2,
+                r: height + 2,
+                r0: 6,
+                startAngle: 45,
+                endAngle: 135
             });
         },
-        /*
-        chord : function (ctx, style) {
+        
+        eventRiver: function (ctx, style) {
             var x = style.x;
             var y = style.y;
             var width = style.width;
             var height = style.height;
             ctx.moveTo(x, y + height);
-            BeziercurveShape.prototype.buildPath(ctx, {
-                xStart : x,
-                yStart : y + height,
-                cpX1 : x + width,
-                cpY1 : y + height,
-                cpX2 : x,
-                cpY2 : y + 4,
-                xEnd : x + width,
-                yEnd : y + 4
-            });
+            ctx.bezierCurveTo(
+                x + width, y + height, x, y + 4, x + width, y + 4
+            );
             ctx.lineTo(x + width, y);
-            BeziercurveShape.prototype.buildPath(ctx, {
-                xStart : x + width,
-                yStart : y,
-                cpX1 : x,
-                cpY1 : y,
-                cpX2 : x + width,
-                cpY2 : y + height - 4,
-                xEnd : x,
-                yEnd : y + height - 4
-            });
+            ctx.bezierCurveTo(
+                x, y, x + width, y + height - 4, x, y + height - 4
+            );
             ctx.lineTo(x, y + height);
         },
-        */
-        k : function (ctx, style) {
+        
+        k: function (ctx, style) {
             var x = style.x;
             var y = style.y;
             var width = style.width;
             var height = style.height;
             CandleShape.prototype.buildPath(ctx, {
-                x : x + width / 2,
-                y : [y + 1, y + 1, y + height - 6, y + height],
-                width : width - 6
+                x: x + width / 2,
+                y: [y + 1, y + 1, y + height - 6, y + height],
+                width: width - 6
             });
         },
         
-        bar : function (ctx, style) {
+        bar: function (ctx, style) {
             var x = style.x;
             var y = style.y +1;
             var width = style.width;
@@ -878,7 +903,7 @@ define(function (require) {
             ctx.quadraticCurveTo(x, y, x + r, y);
         },
         
-        force : function (ctx, style) {
+        force: function (ctx, style) {
             IconShape.prototype.iconLibrary.circle(ctx, style);
         },
         

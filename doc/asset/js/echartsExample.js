@@ -6,20 +6,22 @@ var domMessage = document.getElementById('wrong-message');
 var iconResize = document.getElementById('icon-resize');
 var needRefresh = false;
 
-var hash = location.hash.replace('#','') || (needMap() ? 'default' : 'macarons');
+var enVersion = location.hash.indexOf('-en') != -1;
+var hash = location.hash.replace('-en','');
+hash = hash.replace('#','') || (needMap() ? 'default' : 'macarons');
+hash += enVersion ? '-en' : '';
+
 var curTheme;
 function requireCallback (ec, defaultTheme) {
-    curTheme = themeSelector 
-               ? defaultTheme
-               : {};
+    curTheme = themeSelector ? defaultTheme : {};
     echarts = ec;
     refresh();
     window.onresize = myChart.resize;
 }
 
-var themeSelector = $('#theme-select')[0];
+var themeSelector = $('#theme-select');
 if (themeSelector) {
-    themeSelector.innerHTML =
+    themeSelector.html(
         '<option selected="true" name="macarons">macarons</option>' 
         + '<option name="infographic">infographic</option>'
         + '<option name="shine">shine</option>'
@@ -28,7 +30,9 @@ if (themeSelector) {
         + '<option name="green">green</option>'
         + '<option name="red">red</option>'
         + '<option name="gray">gray</option>'
-        + '<option name="default">default</option>';
+        + '<option name="helianthus">helianthus</option>'
+        + '<option name="default">default</option>'
+    );
     $(themeSelector).on('change', function(){
         selectChange($(this).val());
     });
@@ -37,14 +41,14 @@ if (themeSelector) {
         myChart.showLoading();
         $(themeSelector).val(theme);
         if (theme != 'default') {
-            window.location.hash = value;
+            window.location.hash = value + (enVersion ? '-en' : '');
             require(['theme/' + theme], function(tarTheme){
                 curTheme = tarTheme;
                 setTimeout(refreshTheme, 500);
             })
         }
         else {
-            window.location.hash = '';
+            window.location.hash = enVersion ? '-en' : '';
             curTheme = {};
             setTimeout(refreshTheme, 500);
         }
@@ -53,9 +57,9 @@ if (themeSelector) {
         myChart.hideLoading();
         myChart.setTheme(curTheme);
     }
-    if ($(themeSelector).val(hash).val() != hash) {
+    if ($(themeSelector).val(hash.replace('-en', '')).val() != hash.replace('-en', '')) {
         $(themeSelector).val('macarons');
-        hash = 'macarons';
+        hash = 'macarons' + enVersion ? '-en' : '';
         window.location.hash = hash;
     }
 }
@@ -143,21 +147,9 @@ if (developMode) {
 }
 else {
     // for echarts online home page
-    var fileLocation = needMap() ? './www/js/echarts-map' : './www/js/echarts';
     require.config({
-        paths:{ 
-            echarts: fileLocation,
-            'echarts/chart/line': fileLocation,
-            'echarts/chart/bar': fileLocation,
-            'echarts/chart/scatter': fileLocation,
-            'echarts/chart/k': fileLocation,
-            'echarts/chart/pie': fileLocation,
-            'echarts/chart/radar': fileLocation,
-            'echarts/chart/map': fileLocation,
-            'echarts/chart/chord': fileLocation,
-            'echarts/chart/force': fileLocation,
-            'echarts/chart/gauge': fileLocation,
-            'echarts/chart/funnel': fileLocation
+        paths: {
+            echarts: './www/js'
         }
     });
 }
@@ -166,7 +158,7 @@ else {
 require(
     [
         'echarts',
-        'theme/' + hash,
+        'theme/' + hash.replace('-en', ''),
         'echarts/chart/line',
         'echarts/chart/bar',
         'echarts/chart/scatter',
@@ -177,6 +169,7 @@ require(
         'echarts/chart/chord',
         'echarts/chart/gauge',
         'echarts/chart/funnel',
+        'echarts/chart/eventRiver',
         needMap() ? 'echarts/chart/map' : 'echarts'
     ],
     requireCallback

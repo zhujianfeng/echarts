@@ -12,16 +12,12 @@ define(function (require) {
     // 图形依赖
     var TextShape = require('zrender/shape/Text');
     var LineShape = require('zrender/shape/Line');
-    var RectangleShape = require('zrender/shape/Rectangle');
     var PolygonShape = require('zrender/shape/Polygon');
-    var CircleShape = require('zrender/shape/Circle');
-    var SectorShape = require('zrender/shape/Sector');
 
     var ecConfig = require('../config');
     var ecData = require('../util/ecData');
     var number = require('../util/number');
     var zrUtil = require('zrender/tool/util');
-    var zrMath = require('zrender/tool/math');
     var zrColor = require('zrender/tool/color');
     var zrArea = require('zrender/tool/area');
     
@@ -41,11 +37,11 @@ define(function (require) {
     }
     
     Funnel.prototype = {
-        type : ecConfig.CHART_TYPE_FUNNEL,
+        type: ecConfig.CHART_TYPE_FUNNEL,
         /**
          * 绘制图形
          */
-        _buildShape : function () {
+        _buildShape: function () {
             var series = this.series;
             var legend = this.component.legend;
             // 复用参数索引
@@ -55,12 +51,12 @@ define(function (require) {
             
             var serieName;
             for (var i = 0, l = series.length; i < l; i++) {
-                if (series[i].type == ecConfig.CHART_TYPE_FUNNEL) {
+                if (series[i].type === ecConfig.CHART_TYPE_FUNNEL) {
                     series[i] = this.reformOption(series[i]);
+                    this.legendHoverLink = series[i].legendHoverLink || this.legendHoverLink;
                     serieName = series[i].name || '';
                     // 系列图例开关
-                    this.selectedMap[serieName] = 
-                        legend ? legend.isSelected(serieName) : true;
+                    this.selectedMap[serieName] = legend ? legend.isSelected(serieName) : true;
                     if (!this.selectedMap[serieName]) {
                         continue;
                     }
@@ -77,14 +73,14 @@ define(function (require) {
          *
          * @param {number} seriesIndex 系列索引
          */
-        _buildSingleFunnel : function (seriesIndex) {
+        _buildSingleFunnel: function (seriesIndex) {
             var legend = this.component.legend;
             var serie = this.series[seriesIndex];
             var data = this._mapData(seriesIndex);
             var location = this._getLocation(seriesIndex);
             this._paramsMap[seriesIndex] = {
-                location : location,
-                data : data
+                location: location,
+                data: data
             };
             
             var itemName;
@@ -95,11 +91,12 @@ define(function (require) {
                 itemName = data[i].name;
                 if (legend){
                     this.selectedMap[itemName] = legend.isSelected(itemName);
-                } else {
+                }
+                else {
                     this.selectedMap[itemName] = true;
                 }
                 if (this.selectedMap[itemName] && !isNaN(data[i].value)) {
-                    selectedData.push(data[i])
+                    selectedData.push(data[i]);
                     total++;
                 }
             }
@@ -108,82 +105,105 @@ define(function (require) {
             }
             // 可计算箱子
             var funnelCase = this._buildFunnelCase(seriesIndex);
+            var align = serie.funnelAlign;
             var gap = serie.gap;
             var height = total > 1 
                          ? (location.height - (total - 1) * gap) / total : location.height;
             var width;
             var lastY = location.y;
-            var lastWidth = serie.sort == 'descending'
+            var lastWidth = serie.sort === 'descending'
                             ? this._getItemWidth(seriesIndex, selectedData[0].value)
                             : number.parsePercent(serie.minSize, location.width);
-            var next = serie.sort == 'descending' ? 1 : 0;
+            var next = serie.sort === 'descending' ? 1 : 0;
             var centerX = location.centerX;
-            var pointList = [
-                [
-                    centerX - lastWidth / 2 - (lastWidth == 0 ? 0 : 10), 
-                    lastY - (lastWidth == 0 ? 10 : 5)
-                ],
-                [
-                    centerX + lastWidth / 2 + (lastWidth == 0 ? 0 : 10),
-                    lastY - (lastWidth == 0 ? 10 : 5)
-                ]
-            ];
+            var pointList= [];
+            var x;
+            var polygon
+            var lastPolygon;
             for (var i = 0, l = selectedData.length; i < l; i++) {
                 itemName = selectedData[i].name;
                 if (this.selectedMap[itemName] && !isNaN(selectedData[i].value)) {
                     width = i <= l - 2
                             ? this._getItemWidth(seriesIndex, selectedData[i + next].value)
-                            : serie.sort == 'descending'
+                            : serie.sort === 'descending'
                               ? number.parsePercent(serie.minSize, location.width)
                               : number.parsePercent(serie.maxSize, location.width);
-                    this._buildItem(
-                        seriesIndex, selectedData[i]._index, 
-                        legend 
-                        ? legend.getColor(itemName) : this.zr.getColor(selectedData[i]._index),
-                        centerX - lastWidth / 2, lastY, 
-                        lastWidth, width, height
+                    switch (align) {
+                        case 'left':
+                            x = location.x;
+                            break;
+                        case 'right':
+                            x = location.x + location.width - lastWidth;
+                            break;
+                        default:
+                            x = centerX - lastWidth / 2;
+                    }
+                    polygon = this._buildItem(
+                        seriesIndex, selectedData[i]._index,
+                        legend // color
+                            ? legend.getColor(itemName) 
+                            : this.zr.getColor(selectedData[i]._index),
+                        x, lastY, lastWidth, width, height, align
                     );
                     lastY += height + gap;
+                    lastPolygon = polygon.style.pointList;
+                    
+                    pointList.unshift([lastPolygon[0][0] - 10, lastPolygon[0][1]]); // 左
+                    pointList.push([lastPolygon[1][0] + 10, lastPolygon[1][1]]);    // 右
+                    if (i === 0) {
+                        if (lastWidth === 0) {
+                            lastPolygon = pointList.pop();
+                            align == 'center' && (pointList[0][0] += 10);
+                            align == 'right' && (pointList[0][0] = lastPolygon[0]);
+                            pointList[0][1] -= align == 'center' ? 10 : 15;
+                            if (l == 1) {
+                                lastPolygon = polygon.style.pointList;
+                            }
+                        }
+                        else {
+                            pointList[pointList.length - 1][1] -= 5;
+                            pointList[0][1] -=5;
+                        }
+                    }
                     lastWidth = width;
-                    pointList.unshift([centerX - lastWidth / 2 - 10, lastY]);
-                    pointList.push([centerX + lastWidth / 2 + 10, lastY]);
                 }
             }
+            
             if (funnelCase) {
-                if (lastWidth == 0) {
-                    pointList.pop();
-                    pointList[0][0] +=10;
-                    pointList[0][1] +=10;
+                pointList.unshift([lastPolygon[3][0] - 10, lastPolygon[3][1]]); // 左
+                pointList.push([lastPolygon[2][0] + 10, lastPolygon[2][1]]);    // 右
+                if (lastWidth === 0) {
+                    lastPolygon = pointList.pop();
+                    align == 'center' && (pointList[0][0] += 10);
+                    align == 'right' && (pointList[0][0] = lastPolygon[0]);
+                    pointList[0][1] += align == 'center' ? 10 : 15;
                 }
                 else {
-                    pointList[pointList.length - 1][1] +=5;
+                    pointList[pointList.length - 1][1] += 5;
                     pointList[0][1] +=5;
                 }
                 funnelCase.style.pointList = pointList;
             }
         },
         
-        _buildFunnelCase : function(seriesIndex) {
+        _buildFunnelCase: function(seriesIndex) {
             var serie = this.series[seriesIndex];
             if (this.deepQuery([serie, this.option], 'calculable')) {
                 var location = this._paramsMap[seriesIndex].location;
-                var centerX = location.centerX;
-                var minWidth = number.parsePercent(serie.minSize, location.width) / 2;
-                var maxWidth = number.parsePercent(serie.maxSize, location.width) / 2;
                 var gap = 10;
                 var funnelCase = {
-                    hoverable : false,
-                    style : {
-                        pointListd : [
+                    hoverable: false,
+                    style: {
+                        pointListd: [
                             [location.x - gap, location.y - gap],
                             [location.x + location.width + gap, location.y - gap],
                             [location.x + location.width + gap, location.y + location.height + gap],
                             [location.x - gap, location.y + location.height + gap]
                         ],
-                        brushType : 'stroke',
-                        lineWidth : 1,
-                        strokeColor : serie.calculableHolderColor
-                                      || this.ecTheme.calculableHolderColor
+                        brushType: 'stroke',
+                        lineWidth: 1,
+                        strokeColor: serie.calculableHolderColor
+                                     || this.ecTheme.calculableHolderColor
                     }
                 };
                 ecData.pack(funnelCase, serie, seriesIndex, undefined, -1);
@@ -202,7 +222,7 @@ define(function (require) {
             var y = this.parsePercent(gridOption.y, zrHeight);
             
             var width;
-            if (typeof gridOption.width == 'undefined') {
+            if (gridOption.width == null) {
                 width = zrWidth - x - this.parsePercent(gridOption.x2, zrWidth);
             }
             else {
@@ -210,7 +230,7 @@ define(function (require) {
             }
             
             var height;
-            if (typeof gridOption.height == 'undefined') {
+            if (gridOption.height == null) {
                 height = zrHeight - y - this.parsePercent(gridOption.y2, zrHeight);
             }
             else {
@@ -218,25 +238,25 @@ define(function (require) {
             }
             
             return {
-                x : x,
-                y : y,
-                width : width,
-                height : height,
-                centerX : x + width / 2
-            }
+                x: x,
+                y: y,
+                width: width,
+                height: height,
+                centerX: x + width / 2
+            };
         },
         
-        _mapData : function(seriesIndex) {
+        _mapData: function(seriesIndex) {
             var serie = this.series[seriesIndex];
             var funnelData = zrUtil.clone(serie.data);
             for (var i = 0, l = funnelData.length; i < l; i++) {
                 funnelData[i]._index = i;
             }
             function numDescending (a, b) {
-                if (a.value == '-') {
+                if (a.value === '-') {
                     return 1;
                 }
-                else if (b.value == '-') {
+                else if (b.value === '-') {
                     return -1;
                 }
                 return b.value - a.value;
@@ -245,7 +265,7 @@ define(function (require) {
                 return -numDescending(a, b);
             }
             if (serie.sort != 'none') {
-                funnelData.sort(serie.sort == 'descending' ? numDescending : numAscending)
+                funnelData.sort(serie.sort === 'descending' ? numDescending : numAscending);
             }
             
             return funnelData;
@@ -254,17 +274,18 @@ define(function (require) {
         /**
          * 构建单个扇形及指标
          */
-        _buildItem : function (
+        _buildItem: function (
             seriesIndex, dataIndex, defaultColor,
-            x, y, topWidth, bottomWidth, height
+            x, y, topWidth, bottomWidth, height, align
         ) {
             var series = this.series;
             var serie = series[seriesIndex];
             var data = serie.data[dataIndex];
+            
             // 漏斗
             var polygon = this.getPolygon(
                     seriesIndex, dataIndex, defaultColor,
-                    x, y, topWidth, bottomWidth, height
+                    x, y, topWidth, bottomWidth, height, align
                 );
             ecData.pack(
                 polygon,
@@ -277,7 +298,7 @@ define(function (require) {
             // 文本标签
             var label = this.getLabel(
                     seriesIndex, dataIndex, defaultColor,
-                    x, y, topWidth, bottomWidth, height
+                    x, y, topWidth, bottomWidth, height, align
                 );
             ecData.pack(
                 label,
@@ -294,7 +315,7 @@ define(function (require) {
             // 文本标签视觉引导线
             var labelLine = this.getLabelLine(
                     seriesIndex, dataIndex, defaultColor,
-                    x, y, topWidth, bottomWidth, height
+                    x, y, topWidth, bottomWidth, height, align
                 );
             this.shapeList.push(labelLine);
             // 特定状态下是否需要显示文本标签引导线
@@ -314,13 +335,14 @@ define(function (require) {
             }
             polygon.hoverConnect = polygonHoverConnect;
             label.hoverConnect = labelHoverConnect;
-            polygon.onmouseover = label.onmouseover = this.hoverConnect;
+            
+            return polygon;
         },
 
         /**
          * 根据值计算宽度 
          */
-        _getItemWidth : function (seriesIndex, value) {
+        _getItemWidth: function (seriesIndex, value) {
             var serie = this.series[seriesIndex];
             var location = this._paramsMap[seriesIndex].location;
             var min = serie.min;
@@ -333,9 +355,9 @@ define(function (require) {
         /**
          * 构建扇形
          */
-        getPolygon : function (
+        getPolygon: function (
             seriesIndex, dataIndex, defaultColor,
-            x, y, topWidth, bottomWidth, height
+            xLT, y, topWidth, bottomWidth, height, align
         ) {
             var serie = this.series[seriesIndex];
             var data = serie.data[dataIndex];
@@ -354,30 +376,42 @@ define(function (require) {
                               || defaultColor;
             
             var emphasisColor = this.getItemStyleColor(emphasis.color, seriesIndex, dataIndex, data)
-                || (typeof normalColor == 'string'
+                || (typeof normalColor === 'string'
                     ? zrColor.lift(normalColor, -0.2)
                     : normalColor
                 );
-
+            
+            var  xLB;
+            switch (align) {
+                case 'left':
+                    xLB = xLT;
+                    break;
+                case 'right':
+                    xLB = xLT + (topWidth - bottomWidth);
+                    break;
+                default:
+                    xLB = xLT + (topWidth - bottomWidth) / 2;
+                    break;
+            }
             var polygon = {
-                zlevel : this._zlevelBase,
-                clickable : true,
-                style : {
-                    pointList : [
-                        [x, y],
-                        [x + topWidth, y],
-                        [x + topWidth - (topWidth - bottomWidth) / 2, y + height],
-                        [x + (topWidth - bottomWidth) / 2, y + height]
+                zlevel: this._zlevelBase,
+                clickable: this.deepQuery(queryTarget, 'clickable'),
+                style: {
+                    pointList: [
+                        [xLT, y],
+                        [xLT + topWidth, y],
+                        [xLB + bottomWidth, y + height],
+                        [xLB, y + height]
                     ],
-                    brushType : 'both',
-                    color : normalColor,
-                    lineWidth : normal.borderWidth,
-                    strokeColor : normal.borderColor
+                    brushType: 'both',
+                    color: normalColor,
+                    lineWidth: normal.borderWidth,
+                    strokeColor: normal.borderColor
                 },
-                highlightStyle : {
-                    color : emphasisColor,
-                    lineWidth : emphasis.borderWidth,
-                    strokeColor : emphasis.borderColor
+                highlightStyle: {
+                    color: emphasisColor,
+                    lineWidth: emphasis.borderWidth,
+                    strokeColor: emphasis.borderColor
                 }
             };
             
@@ -392,9 +426,9 @@ define(function (require) {
         /**
          * 需要显示则会有返回构建好的shape，否则返回undefined
          */
-        getLabel : function (
+        getLabel: function (
             seriesIndex, dataIndex, defaultColor,
-            x, y, topWidth, bottomWidth, height
+            x, y, topWidth, bottomWidth, height, align
         ) {
             var serie = this.series[seriesIndex];
             var data = serie.data[dataIndex];
@@ -413,46 +447,41 @@ define(function (require) {
             var text = this.getLabelText(seriesIndex, dataIndex, status);
             var textFont = this.getFont(textStyle);
             var textAlign;
-            var textX;
             var textColor = defaultColor;
             labelControl.position = labelControl.position 
                                     || itemStyle.normal.label.position;
-            if (labelControl.position == 'inner' || labelControl.position == 'inside') {
+            if (labelControl.position === 'inner'
+                || labelControl.position === 'inside'
+                || labelControl.position === 'center'
+            ) {
                 // 内部
-                textAlign = 'center';
-                textX = x + topWidth / 2;
-                if (Math.max(topWidth, bottomWidth) / 2 > zrArea.getTextWidth(text, textFont)) {
-                    textColor = '#fff';
-                }
-                else {
-                    textColor = zrColor.reverse(defaultColor);
-                }
+                textAlign = align;
+                textColor = 
+                    Math.max(topWidth, bottomWidth) / 2 > zrArea.getTextWidth(text, textFont)
+                    ? '#fff' : zrColor.reverse(defaultColor);
             }
-            else if (labelControl.position == 'left'){
+            else if (labelControl.position === 'left'){
                 // 左侧显示
                 textAlign = 'right';
-                textX = lineLength == 'auto' 
-                        ? (location.x - 10) 
-                        : (location.centerX - Math.max(topWidth, bottomWidth) / 2 - lineLength);
             }
             else {
-                // 右侧显示，默认 labelControl.position == 'outer' || 'right)
+                // 右侧显示，默认 labelControl.position === 'outer' || 'right)
                 textAlign = 'left';
-                textX = lineLength == 'auto' 
-                        ? (location.x + location.width + 10) 
-                        : (location.centerX + Math.max(topWidth, bottomWidth) / 2 + lineLength);
             }
             
             var textShape = {
-                zlevel : this._zlevelBase + 1,
-                style : {
-                    x : textX,
-                    y : y + height / 2,
-                    color : textStyle.color || textColor,
-                    text : text,
-                    textAlign : textStyle.align || textAlign,
-                    textBaseline : textStyle.baseline || 'middle',
-                    textFont : textFont
+                zlevel: this._zlevelBase + 1,
+                style: {
+                    x: this._getLabelPoint(
+                           labelControl.position, x, location,
+                           topWidth, bottomWidth,lineLength, align
+                       ),
+                    y: y + height / 2,
+                    color: textStyle.color || textColor,
+                    text: text,
+                    textAlign: textStyle.align || textAlign,
+                    textBaseline: textStyle.baseline || 'middle',
+                    textFont: textFont
                 }
             };
             
@@ -466,39 +495,36 @@ define(function (require) {
             text = this.getLabelText(seriesIndex, dataIndex, status);
             textFont = this.getFont(textStyle);
             textColor = defaultColor;
-            if (labelControl.position == 'inner' || labelControl.position == 'inside') {
+            if (labelControl.position === 'inner' 
+                || labelControl.position === 'inside'
+                || labelControl.position === 'center'
+            ) {
                 // 内部
-                textAlign = 'center';
-                textX = x + topWidth / 2;
-                if (Math.max(topWidth, bottomWidth) / 2 > zrArea.getTextWidth(text, textFont)) {
-                    textColor = '#fff';
-                }
-                else {
-                    textColor = zrColor.reverse(defaultColor);
-                }
+                textAlign = align;
+                textColor = 
+                    Math.max(topWidth, bottomWidth) / 2 > zrArea.getTextWidth(text, textFont)
+                    ? '#fff' : zrColor.reverse(defaultColor);
             }
-            else if (labelControl.position == 'left'){
+            else if (labelControl.position === 'left'){
                 // 左侧显示
                 textAlign = 'right';
-                textX = lineLength == 'auto' 
-                        ? (location.x - 10) 
-                        : (location.centerX - Math.max(topWidth, bottomWidth) / 2 - lineLength);
             }
             else {
-                // 右侧显示，默认 labelControl.position == 'outer' || 'right)
+                // 右侧显示，默认 labelControl.position === 'outer' || 'right)
                 textAlign = 'left';
-                textX = lineLength == 'auto' 
-                        ? (location.x + location.width + 10) 
-                        : (location.centerX + Math.max(topWidth, bottomWidth) / 2 + lineLength);
             }
-            textShape.highlightStyle  = {
-                x : textX,
-                color : textStyle.color || textColor,
-                text : text,
-                textAlign : textStyle.align || textAlign,
-                textFont : textFont,
-                brushType : 'fill'
-            }
+            
+            textShape.highlightStyle = {
+                x: this._getLabelPoint(
+                       labelControl.position, x, location,
+                       topWidth, bottomWidth,lineLength, align
+                   ),
+                color: textStyle.color || textColor,
+                text: text,
+                textAlign: textStyle.align || textAlign,
+                textFont: textFont,
+                brushType: 'fill'
+            };
             
             return new TextShape(textShape);
         },
@@ -506,7 +532,7 @@ define(function (require) {
         /**
          * 根据lable.format计算label text
          */
-        getLabelText : function (seriesIndex, dataIndex, status) {
+        getLabelText: function (seriesIndex, dataIndex, status) {
             var series = this.series;
             var serie = series[seriesIndex];
             var data = serie.data[dataIndex];
@@ -516,14 +542,15 @@ define(function (require) {
             );
             
             if (formatter) {
-                if (typeof formatter == 'function') {
-                    return formatter(
+                if (typeof formatter === 'function') {
+                    return formatter.call(
+                        this.myChart,
                         serie.name,
                         data.name,
                         data.value
                     );
                 }
-                else if (typeof formatter == 'string') {
+                else if (typeof formatter === 'string') {
                     formatter = formatter.replace('{a}','{a0}')
                                          .replace('{b}','{b0}')
                                          .replace('{c}','{c0}');
@@ -542,9 +569,9 @@ define(function (require) {
         /**
          * 需要显示则会有返回构建好的shape，否则返回undefined
          */
-        getLabelLine : function (
+        getLabelLine: function (
             seriesIndex, dataIndex, defaultColor,
-            x, y, topWidth, bottomWidth, height
+            x, y, topWidth, bottomWidth, height, align
         ) {
             var serie = this.series[seriesIndex];
             var data = serie.data[dataIndex];
@@ -564,34 +591,21 @@ define(function (require) {
             var labelControl = itemStyle[status].label;
             labelControl.position = labelControl.position 
                                     || itemStyle.normal.label.position;
-            var xEnd;
-            if (labelControl.position == 'inner' || labelControl.position == 'inside') {
-                // 内部
-                xEnd = x + topWidth / 2;
-            }
-            else if (labelControl.position == 'left'){
-                // 左侧显示
-                xEnd = lineLength == 'auto' 
-                       ? (location.x - 10)
-                       : (location.centerX - Math.max(topWidth, bottomWidth) / 2 - lineLength);
-            }
-            else {
-                // 右侧显示，默认 labelControl.position == 'outer' || 'right)
-                xEnd = lineLength == 'auto' 
-                       ? (location.x + location.width + 10) 
-                       : (location.centerX + Math.max(topWidth, bottomWidth) / 2 + lineLength);
-            }
+
             var lineShape = {
-                zlevel : this._zlevelBase + 1,
-                hoverable : false,
-                style : {
-                    xStart : location.centerX,
-                    yStart : y + height / 2,
-                    xEnd : xEnd,
-                    yEnd : y + height / 2,
-                    strokeColor : lineStyle.color || defaultColor,
-                    lineType : lineStyle.type,
-                    lineWidth : lineStyle.width
+                zlevel: this._zlevelBase + 1,
+                hoverable: false,
+                style: {
+                    xStart: this._getLabelLineStartPoint(x, location, topWidth, bottomWidth, align),
+                    yStart: y + height / 2,
+                    xEnd: this._getLabelPoint(
+                              labelControl.position, x, location,
+                              topWidth, bottomWidth,lineLength, align
+                          ),
+                    yEnd: y + height / 2,
+                    strokeColor: lineStyle.color || defaultColor,
+                    lineType: lineStyle.type,
+                    lineWidth: lineStyle.width
                 }
             };
             
@@ -603,30 +617,70 @@ define(function (require) {
 
             labelControl = itemStyle[status].label || labelControl;
             labelControl.position = labelControl.position;
-            if (labelControl.position == 'inner' || labelControl.position == 'inside') {
-                // 内部
-                xEnd = x + topWidth / 2;
-            }
-            else if (labelControl.position == 'left'){
-                // 左侧显示
-                xEnd = lineLength == 'auto' 
-                       ? (location.x - 10) 
-                       : (location.centerX - Math.max(topWidth, bottomWidth) / 2 - lineLength);
-            }
-            else {
-                // 右侧显示，默认 labelControl.position == 'outer' || 'right)
-                xEnd = lineLength == 'auto' 
-                       ? (location.x + location.width + 10) 
-                       : (location.centerX + Math.max(topWidth, bottomWidth) / 2 + lineLength);
-            }
+            
             lineShape.highlightStyle = {
-                xEnd : xEnd,
-                strokeColor : lineStyle.color || defaultColor,
-                lineType : lineStyle.type,
-                lineWidth : lineStyle.width
+                xEnd: this._getLabelPoint(
+                          labelControl.position, x, location,
+                          topWidth, bottomWidth,lineLength, align
+                      ),
+                strokeColor: lineStyle.color || defaultColor,
+                lineType: lineStyle.type,
+                lineWidth: lineStyle.width
             };
             
-            return new LineShape(lineShape)
+            return new LineShape(lineShape);
+        },
+        
+        _getLabelPoint: function(position, x, location, topWidth, bottomWidth, lineLength, align) {
+            position = (position === 'inner' || position === 'inside') ? 'center' : position;
+            switch (position) {
+                case 'center':
+                    return align == 'center'
+                            ? (x + topWidth / 2)
+                            : align == 'left' ? (x + 10) : (x + topWidth - 10);
+                case 'left':
+                    // 左侧文本
+                    if (lineLength === 'auto') {
+                        return location.x - 10;
+                    }
+                    else {
+                        return align == 'center'
+                            // 居中布局
+                            ? (location.centerX - Math.max(topWidth, bottomWidth) / 2 - lineLength)
+                            : align == 'right'
+                                // 右对齐布局
+                                ? (x 
+                                    - (topWidth < bottomWidth ? (bottomWidth - topWidth) : 0)
+                                    - lineLength
+                                )
+                                // 左对齐布局
+                                : (location.x - lineLength);
+                    }
+                    break;
+                default:
+                    // 右侧文本
+                    if (lineLength === 'auto') {
+                        return location.x + location.width + 10;
+                    }
+                    else {
+                        return align == 'center'
+                            // 居中布局
+                            ? (location.centerX + Math.max(topWidth, bottomWidth) / 2 + lineLength)
+                            : align == 'right'
+                                // 右对齐布局
+                                ? (location.x + location.width + lineLength)
+                                // 左对齐布局
+                                : (x + Math.max(topWidth, bottomWidth) + lineLength);
+                    }
+            }
+        },
+        
+        _getLabelLineStartPoint: function(x, location, topWidth, bottomWidth, align) {
+            return align == 'center'
+                   ? location.centerX 
+                   : topWidth < bottomWidth
+                     ? (x + Math.min(topWidth, bottomWidth) / 2)
+                     : (x + Math.max(topWidth, bottomWidth) / 2);
         },
 
         /**
@@ -635,7 +689,7 @@ define(function (require) {
          * @param {Object} data
          * @param {boolean} isEmphasis true is 'emphasis' and false is 'normal'
          */
-        _needLabel : function (serie, data, isEmphasis) {
+        _needLabel: function (serie, data, isEmphasis) {
             return this.deepQuery(
                 [data, serie],
                 'itemStyle.'
@@ -650,7 +704,7 @@ define(function (require) {
          * @param {Object} data
          * @param {boolean} isEmphasis true is 'emphasis' and false is 'normal'
          */
-        _needLabelLine : function (serie, data, isEmphasis) {
+        _needLabelLine: function (serie, data, isEmphasis) {
             return this.deepQuery(
                 [data, serie],
                 'itemStyle.'
@@ -662,7 +716,7 @@ define(function (require) {
         /**
          * 刷新
          */
-        refresh : function (newOption) {
+        refresh: function (newOption) {
             if (newOption) {
                 this.option = newOption;
                 this.series = newOption.series;

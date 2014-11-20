@@ -43,12 +43,14 @@ define(function (require) {
             this.setContext(ctx, style);
 
             // 设置transform
-            this.updateTransform(ctx);
+            this.setTransform(ctx);
 
+            ctx.save();
             ctx.beginPath();
             this.buildLinePath(ctx, style);
             ctx.stroke();
-
+            ctx.restore();
+            
             this.brushSymbol(ctx, style);
 
             ctx.restore();

@@ -19,9 +19,8 @@ define(function (require) {
 
     var ecConfig = require('../config');
     var ecData = require('../util/ecData');
+    var accMath = require('../util/accMath');
     var zrUtil = require('zrender/tool/util');
-    var zrMath = require('zrender/tool/math');
-    var zrColor = require('zrender/tool/color');
     
     /**
      * 构造函数
@@ -39,17 +38,18 @@ define(function (require) {
     }
     
     Gauge.prototype = {
-        type : ecConfig.CHART_TYPE_GAUGE,
+        type: ecConfig.CHART_TYPE_GAUGE,
         /**
          * 绘制图形
          */
-        _buildShape : function () {
+        _buildShape: function () {
             var series = this.series;
             // 复用参数索引
             this._paramsMap = {};
             for (var i = 0, l = series.length; i < l; i++) {
-                if (series[i].type == ecConfig.CHART_TYPE_GAUGE) {
+                if (series[i].type === ecConfig.CHART_TYPE_GAUGE) {
                     series[i] = this.reformOption(series[i]);
+                    this.legendHoverLink = series[i].legendHoverLink || this.legendHoverLink;
                     this._buildSingleGauge(i);
                     this.buildMark(i);
                 }
@@ -63,14 +63,14 @@ define(function (require) {
          *
          * @param {number} seriesIndex 系列索引
          */
-        _buildSingleGauge : function (seriesIndex) {
+        _buildSingleGauge: function (seriesIndex) {
             var serie = this.series[seriesIndex];
 
             this._paramsMap[seriesIndex] = {
-                center : this.parseCenter(this.zr, serie.center),
-                radius : this.parseRadius(this.zr, serie.radius),
-                startAngle : serie.startAngle.toFixed(2) - 0,
-                endAngle : serie.endAngle.toFixed(2) - 0
+                center: this.parseCenter(this.zr, serie.center),
+                radius: this.parseRadius(this.zr, serie.radius),
+                startAngle: serie.startAngle.toFixed(2) - 0,
+                endAngle: serie.endAngle.toFixed(2) - 0
             };
             this._paramsMap[seriesIndex].totalAngle = this._paramsMap[seriesIndex].startAngle
                                                     - this._paramsMap[seriesIndex].endAngle;
@@ -93,10 +93,10 @@ define(function (require) {
         },
         
         // 轴线
-        _buildAxisLine : function (seriesIndex) {
+        _buildAxisLine: function (seriesIndex) {
             var serie = this.series[seriesIndex];
             if (!serie.axisLine.show) {
-                return
+                return;
             }
             var min         = serie.min;
             var total       = serie.max - min;
@@ -111,11 +111,10 @@ define(function (require) {
             var r0          = r - lineWidth;
             
             var sectorShape;
-            var len = colorArray.length;
             var lastAngle = startAngle;
             var newAngle;
             for (var i = 0, l = colorArray.length; i < l; i++) {
-                newAngle = startAngle - totalAngle * colorArray[i][0] / total;
+                newAngle = startAngle - totalAngle * (colorArray[i][0] - min) / total;
                 sectorShape = this._getSector(
                     center, r0, r, 
                     newAngle,           // startAngle
@@ -132,10 +131,10 @@ define(function (require) {
         },
         
         // 坐标轴分割线
-        _buildSplitLine : function (seriesIndex) {
+        _buildSplitLine: function (seriesIndex) {
             var serie = this.series[seriesIndex];
             if (!serie.splitLine.show) {
-                return
+                return;
             }
             
             var params = this._paramsMap[seriesIndex];
@@ -154,7 +153,6 @@ define(function (require) {
             var r = params.radius[1];
             var r0 = r - length;
             
-            var axShape;
             var angle;
             var sinAngle;
             var cosAngle;
@@ -163,19 +161,19 @@ define(function (require) {
                 sinAngle = Math.sin(angle);
                 cosAngle = Math.cos(angle);
                 this.shapeList.push(new LineShape({
-                    zlevel : this._zlevelBase + 1,
-                    hoverable : false,
-                    style : {
-                        xStart : center[0] + cosAngle * r,
-                        yStart : center[1] - sinAngle * r,
-                        xEnd : center[0] + cosAngle * r0,
-                        yEnd : center[1] - sinAngle * r0,
-                        strokeColor : color == 'auto' 
-                                      ? this._getColor(seriesIndex, min + total / splitNumber * i)
-                                      : color,
-                        lineType : lineStyle.type,
-                        lineWidth : lineStyle.width,
-                        shadowColor : lineStyle.shadowColor,
+                    zlevel: this._zlevelBase + 1,
+                    hoverable: false,
+                    style: {
+                        xStart: center[0] + cosAngle * r,
+                        yStart: center[1] - sinAngle * r,
+                        xEnd: center[0] + cosAngle * r0,
+                        yEnd: center[1] - sinAngle * r0,
+                        strokeColor: color === 'auto' 
+                                     ? this._getColor(seriesIndex, min + total / splitNumber * i)
+                                     : color,
+                        lineType: lineStyle.type,
+                        lineWidth: lineStyle.width,
+                        shadowColor: lineStyle.shadowColor,
                         shadowBlur: lineStyle.shadowBlur,
                         shadowOffsetX: lineStyle.shadowOffsetX,
                         shadowOffsetY: lineStyle.shadowOffsetY
@@ -185,10 +183,10 @@ define(function (require) {
         },
         
         // 小标记
-        _buildAxisTick : function (seriesIndex) {
+        _buildAxisTick: function (seriesIndex) {
             var serie = this.series[seriesIndex];
             if (!serie.axisTick.show) {
-                return
+                return;
             }
             
             var params = this._paramsMap[seriesIndex];
@@ -209,31 +207,30 @@ define(function (require) {
             var r = params.radius[1];
             var r0 = r - length;
             
-            var axShape;
             var angle;
             var sinAngle;
             var cosAngle;
             for (var i = 0, l = splitNumber * tickSplit; i <= l; i++) {
-                if (i % tickSplit == 0) {   // 同splitLine
+                if (i % tickSplit === 0) {   // 同splitLine
                     continue;
                 }
                 angle = startAngle - totalAngle / l * i;
                 sinAngle = Math.sin(angle);
                 cosAngle = Math.cos(angle);
                 this.shapeList.push(new LineShape({
-                    zlevel : this._zlevelBase + 1,
-                    hoverable : false,
-                    style : {
-                        xStart : center[0] + cosAngle * r,
-                        yStart : center[1] - sinAngle * r,
-                        xEnd : center[0] + cosAngle * r0,
-                        yEnd : center[1] - sinAngle * r0,
-                        strokeColor : color == 'auto' 
-                                      ? this._getColor(seriesIndex, min + total / l * i)
-                                      : color,
-                        lineType : lineStyle.type,
-                        lineWidth : lineStyle.width,
-                        shadowColor : lineStyle.shadowColor,
+                    zlevel: this._zlevelBase + 1,
+                    hoverable: false,
+                    style: {
+                        xStart: center[0] + cosAngle * r,
+                        yStart: center[1] - sinAngle * r,
+                        xEnd: center[0] + cosAngle * r0,
+                        yEnd: center[1] - sinAngle * r0,
+                        strokeColor: color === 'auto' 
+                                     ? this._getColor(seriesIndex, min + total / l * i)
+                                     : color,
+                        lineType: lineStyle.type,
+                        lineWidth: lineStyle.width,
+                        shadowColor: lineStyle.shadowColor,
                         shadowBlur: lineStyle.shadowBlur,
                         shadowOffsetX: lineStyle.shadowOffsetX,
                         shadowOffsetY: lineStyle.shadowOffsetY
@@ -243,10 +240,10 @@ define(function (require) {
         },
         
         // 坐标轴文本
-        _buildAxisLabel : function (seriesIndex) {
+        _buildAxisLabel: function (seriesIndex) {
             var serie = this.series[seriesIndex];
             if (!serie.axisLabel.show) {
-                return
+                return;
             }
             
             var splitNumber = serie.splitNumber;
@@ -264,37 +261,39 @@ define(function (require) {
                      - this.parsePercent(
                          serie.splitLine.length, params.radius[1]
                      ) - 10;
-            var axShape;
+            
             var angle;
             var sinAngle;
             var cosAngle;
             var value;
             for (var i = 0; i <= splitNumber; i++) {
-                value = min + total / splitNumber * i;
+                value = accMath.accAdd(
+                            min , accMath.accMul(accMath.accDiv(total , splitNumber), i)
+                        );
                 angle = startAngle - totalAngle / splitNumber * i;
                 sinAngle = Math.sin(angle * Math.PI / 180);
                 cosAngle = Math.cos(angle * Math.PI / 180);
                 angle = (angle + 360) % 360;
                 this.shapeList.push(new TextShape({
-                    zlevel : this._zlevelBase + 1,
-                    hoverable : false,
-                    style : {
-                        x : center[0] + cosAngle * r0,
-                        y : center[1] - sinAngle * r0,
-                        color : color == 'auto' ? this._getColor(seriesIndex, value) : color,
-                        text : this._getLabelText(serie.axisLabel.formatter, value),
-                        textAlign : (angle >= 110 && angle <= 250)
-                                    ? 'left' 
-                                    : (angle <= 70 || angle >= 290)
-                                        ? 'right'
-                                        : 'center',
-                        textBaseline : (angle >= 10 && angle <= 170)
-                                       ? 'top' 
-                                       : (angle >= 190 && angle <= 350)
-                                            ? 'bottom'
-                                            : 'middle',
-                        textFont : textFont,
-                        shadowColor : textStyle.shadowColor,
+                    zlevel: this._zlevelBase + 1,
+                    hoverable: false,
+                    style: {
+                        x: center[0] + cosAngle * r0,
+                        y: center[1] - sinAngle * r0,
+                        color: color === 'auto' ? this._getColor(seriesIndex, value) : color,
+                        text: this._getLabelText(serie.axisLabel.formatter, value),
+                        textAlign: (angle >= 110 && angle <= 250)
+                                   ? 'left' 
+                                   : (angle <= 70 || angle >= 290)
+                                       ? 'right'
+                                       : 'center',
+                        textBaseline: (angle >= 10 && angle <= 170)
+                                      ? 'top' 
+                                      : (angle >= 190 && angle <= 350)
+                                          ? 'bottom'
+                                          : 'middle',
+                        textFont: textFont,
+                        shadowColor: textStyle.shadowColor,
                         shadowBlur: textStyle.shadowBlur,
                         shadowOffsetX: textStyle.shadowOffsetX,
                         shadowOffsetY: textStyle.shadowOffsetY
@@ -303,13 +302,13 @@ define(function (require) {
             }
         },
         
-        _buildPointer : function (seriesIndex) {
-            var serie       = this.series[seriesIndex];
+        _buildPointer: function (seriesIndex) {
+            var serie = this.series[seriesIndex];
             if (!serie.pointer.show) {
-                return
+                return;
             }
-            var total       = serie.max - serie.min;
-            var pointer     = serie.pointer;
+            var total = serie.max - serie.min;
+            var pointer = serie.pointer;
             
             var params = this._paramsMap[seriesIndex];
             var length = this.parsePercent(pointer.length, params.radius[1]);
@@ -318,29 +317,29 @@ define(function (require) {
             var value = this._getValue(seriesIndex);
             value = value < serie.max ? value : serie.max;
             
-            var angle  = (params.startAngle - params.totalAngle / total * value) * Math.PI / 180;
-            var color = pointer.color == 'auto' 
+            var angle  = (params.startAngle - params.totalAngle / total * (value - serie.min)) * Math.PI / 180;
+            var color = pointer.color === 'auto' 
                         ? this._getColor(seriesIndex, value) : pointer.color;
             
             var pointShape = new GaugePointerShape({
-                zlevel : this._zlevelBase + 1,
-                style : {
-                    x : center[0],
-                    y : center[1],
-                    r : length,
-                    startAngle : params.startAngle * Math.PI / 180,
-                    angle : angle,
-                    color : color,
-                    width : width,
-                    shadowColor : pointer.shadowColor,
+                zlevel: this._zlevelBase + 1,
+                style: {
+                    x: center[0],
+                    y: center[1],
+                    r: length,
+                    startAngle: params.startAngle * Math.PI / 180,
+                    angle: angle,
+                    color: color,
+                    width: width,
+                    shadowColor: pointer.shadowColor,
                     shadowBlur: pointer.shadowBlur,
                     shadowOffsetX: pointer.shadowOffsetX,
                     shadowOffsetY: pointer.shadowOffsetY
                 },
-                highlightStyle : {
-                    brushType : 'fill',
-                    width : width > 2 ? 2 : (width / 2),
-                    color : '#fff'
+                highlightStyle: {
+                    brushType: 'fill',
+                    width: width > 2 ? 2 : (width / 2),
+                    color: '#fff'
                 }
             });
             ecData.pack(
@@ -353,26 +352,26 @@ define(function (require) {
             this.shapeList.push(pointShape);
             
             this.shapeList.push(new CircleShape({
-                zlevel : this._zlevelBase + 2,
-                hoverable : false,
-                style : {
-                    x : center[0],
-                    y : center[1],
-                    r : pointer.width / 2.5,
-                    color : '#fff'
+                zlevel: this._zlevelBase + 2,
+                hoverable: false,
+                style: {
+                    x: center[0],
+                    y: center[1],
+                    r: pointer.width / 2.5,
+                    color: '#fff'
                 }
             }));
         },
         
-        _buildTitle : function(seriesIndex) {
+        _buildTitle: function(seriesIndex) {
             var serie = this.series[seriesIndex];
             if (!serie.title.show) {
-                return
+                return;
             }
             
             var data = serie.data[0];
-            var name = typeof data.name != 'undefined' ? data.name : '';
-            if (name !== '') {
+            var name = data.name != null ? data.name : '';
+            if (name !== '') { // 不要帮我代码规范
                 var title           = serie.title;
                 var offsetCenter    = title.offsetCenter;
                 var textStyle       = title.textStyle;
@@ -381,18 +380,18 @@ define(function (require) {
                 var x = params.center[0] + this.parsePercent(offsetCenter[0], params.radius[1]);
                 var y = params.center[1] + this.parsePercent(offsetCenter[1], params.radius[1]);
                 this.shapeList.push(new TextShape({
-                    zlevel : this._zlevelBase
+                    zlevel: this._zlevelBase
                              + (Math.abs(x - params.center[0]) + Math.abs(y - params.center[1])) 
                                < textStyle.fontSize * 2 ? 2 : 1,
-                    hoverable : false,
-                    style : {
-                        x : x,
-                        y : y,
-                        color: textColor == 'auto' ? this._getColor(seriesIndex) : textColor,
+                    hoverable: false,
+                    style: {
+                        x: x,
+                        y: y,
+                        color: textColor === 'auto' ? this._getColor(seriesIndex) : textColor,
                         text: name,
                         textAlign: 'center',
-                        textFont : this.getFont(textStyle),
-                        shadowColor : textStyle.shadowColor,
+                        textFont: this.getFont(textStyle),
+                        shadowColor: textStyle.shadowColor,
                         shadowBlur: textStyle.shadowBlur,
                         shadowOffsetX: textStyle.shadowOffsetX,
                         shadowOffsetY: textStyle.shadowOffsetY
@@ -401,10 +400,10 @@ define(function (require) {
             }
         },
         
-        _buildDetail : function(seriesIndex) {
+        _buildDetail: function(seriesIndex) {
             var serie = this.series[seriesIndex];
             if (!serie.detail.show) {
-                return
+                return;
             }
             
             var detail          = serie.detail;
@@ -420,21 +419,22 @@ define(function (require) {
             var y = params.center[1] 
                     + this.parsePercent(offsetCenter[1], params.radius[1]);
             this.shapeList.push(new RectangleShape({
-                zlevel : this._zlevelBase 
-                         + (Math.abs(x+detail.width/2 - params.center[0]) + Math.abs(y+detail.height/2 - params.center[1])) 
-                           < textStyle.fontSize ? 2 : 1,
-                hoverable : false,
-                style : {
-                    x : x,
-                    y : y,
-                    width : detail.width,
-                    height : detail.height,
+                zlevel: this._zlevelBase 
+                        + (Math.abs(x+detail.width/2 - params.center[0]) 
+                        + Math.abs(y+detail.height/2 - params.center[1])) < textStyle.fontSize 
+                          ? 2 : 1,
+                hoverable: false,
+                style: {
+                    x: x,
+                    y: y,
+                    width: detail.width,
+                    height: detail.height,
                     brushType: 'both',
-                    color: color == 'auto' ? this._getColor(seriesIndex, value) : color,
-                    lineWidth : detail.borderWidth,
-                    strokeColor : detail.borderColor,
+                    color: color === 'auto' ? this._getColor(seriesIndex, value) : color,
+                    lineWidth: detail.borderWidth,
+                    strokeColor: detail.borderColor,
                     
-                    shadowColor : detail.shadowColor,
+                    shadowColor: detail.shadowColor,
                     shadowBlur: detail.shadowBlur,
                     shadowOffsetX: detail.shadowOffsetX,
                     shadowOffsetY: detail.shadowOffsetY,
@@ -442,20 +442,20 @@ define(function (require) {
                     text: this._getLabelText(detail.formatter, value),
                     textFont: this.getFont(textStyle),
                     textPosition: 'inside',
-                    textColor : textColor == 'auto' ? this._getColor(seriesIndex, value) : textColor
+                    textColor: textColor === 'auto' ? this._getColor(seriesIndex, value) : textColor
                 }
             }));
         },
         
-        _getValue : function(seriesIndex) {
+        _getValue: function(seriesIndex) {
             var data = this.series[seriesIndex].data[0];
-            return typeof data.value != 'undefined' ? data.value : data;
+            return data.value != null ? data.value : data;
         },
         
         /**
          * 颜色索引 
          */
-        _colorMap : function (seriesIndex) {
+        _colorMap: function (seriesIndex) {
             var serie = this.series[seriesIndex];
             var min = serie.min;
             var total = serie.max - min;
@@ -473,8 +473,8 @@ define(function (require) {
         /**
          * 自动颜色 
          */
-        _getColor : function (seriesIndex, value) {
-            if (typeof value == 'undefined') {
+        _getColor: function (seriesIndex, value) {
+            if (value == null) {
                 value = this._getValue(seriesIndex);
             }
             
@@ -490,20 +490,20 @@ define(function (require) {
         /**
          * 构建扇形
          */
-        _getSector : function (center, r0, r, startAngle, endAngle, color, lineStyle) {
+        _getSector: function (center, r0, r, startAngle, endAngle, color, lineStyle) {
             return new SectorShape ({
-                zlevel : this._zlevelBase,
-                hoverable : false,
-                style : {
-                    x : center[0],      // 圆心横坐标
-                    y : center[1],      // 圆心纵坐标
-                    r0 : r0,            // 圆环内半径
-                    r : r,              // 圆环外半径
-                    startAngle : startAngle,
-                    endAngle : endAngle,
-                    brushType : 'fill',
-                    color : color,
-                    shadowColor : lineStyle.shadowColor,
+                zlevel: this._zlevelBase,
+                hoverable: false,
+                style: {
+                    x: center[0],      // 圆心横坐标
+                    y: center[1],      // 圆心纵坐标
+                    r0: r0,            // 圆环内半径
+                    r: r,              // 圆环外半径
+                    startAngle: startAngle,
+                    endAngle: endAngle,
+                    brushType: 'fill',
+                    color: color,
+                    shadowColor: lineStyle.shadowColor,
                     shadowBlur: lineStyle.shadowBlur,
                     shadowOffsetX: lineStyle.shadowOffsetX,
                     shadowOffsetY: lineStyle.shadowOffsetY
@@ -514,12 +514,12 @@ define(function (require) {
         /**
          * 根据lable.format计算label text
          */
-        _getLabelText : function (formatter, value) {
+        _getLabelText: function (formatter, value) {
             if (formatter) {
-                if (typeof formatter == 'function') {
-                    return formatter(value);
+                if (typeof formatter === 'function') {
+                    return formatter.call(this.myChart, value);
                 }
-                else if (typeof formatter == 'string') {
+                else if (typeof formatter === 'string') {
                     return formatter.replace('{value}', value);
                 }
             }
@@ -529,7 +529,7 @@ define(function (require) {
         /**
          * 刷新
          */
-        refresh : function (newOption) {
+        refresh: function (newOption) {
             if (newOption) {
                 this.option = newOption;
                 this.series = newOption.series;

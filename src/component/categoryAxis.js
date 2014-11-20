@@ -51,7 +51,7 @@ define(function (require) {
                             || this.option.axisLabel.formatter;
             if (formatter) {
                 if (typeof formatter == 'function') {
-                    data = formatter(data);
+                    data = formatter.call(this.myChart, data);
                 }
                 else if (typeof formatter == 'string') {
                     data = formatter.replace('{value}', data);
@@ -162,7 +162,9 @@ define(function (require) {
         _buildShape : function () {
             // 标签显示的挑选间隔
             this._interval = this._getInterval();
-            
+            if (!this.option.show) {
+                return;
+            }
             this.option.splitArea.show && this._buildSplitArea();
             this.option.splitLine.show && this._buildSplitLine();
             this.option.axisLine.show && this._buildAxisLine();

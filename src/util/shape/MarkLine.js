@@ -49,18 +49,18 @@ define(function (require) {
             this.setContext(ctx, style);
 
             // 设置transform
-            this.updateTransform(ctx);
+            this.setTransform(ctx);
 
+            ctx.save();
             ctx.beginPath();
             this.buildLinePath(ctx, style);
             ctx.stroke();
+            ctx.restore();
 
             this.brushSymbol(ctx, style, 0);
             this.brushSymbol(ctx, style, 1);
 
-            if (style.text) {
-                this.drawText(ctx, style, this.style);
-            }
+            this.drawText(ctx, style, this.style);
 
             ctx.restore();
         },
@@ -239,15 +239,15 @@ define(function (require) {
             var point= [
                 [
                     x + symbolSize * Math.cos(rotate - halfRotate),
-                    y - symbolSize * Math.sin(rotate - halfRotate),
+                    y - symbolSize * Math.sin(rotate - halfRotate)
                 ],
                 [
                     x + symbolSize * 0.6 * Math.cos(rotate),
-                    y - symbolSize * 0.6 * Math.sin(rotate),
+                    y - symbolSize * 0.6 * Math.sin(rotate)
                 ],
                 [
                     x + symbolSize * Math.cos(rotate + halfRotate),
-                    y - symbolSize * Math.sin(rotate + halfRotate),
+                    y - symbolSize * Math.sin(rotate + halfRotate)
                 ]
             ];
             ctx.moveTo(x, y);

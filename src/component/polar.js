@@ -12,6 +12,8 @@ define(function (require) {
     var TextShape = require('zrender/shape/Text');
     var LineShape = require('zrender/shape/Line');
     var PolygonShape = require('zrender/shape/Polygon');
+    var Circle = require('zrender/shape/Circle');
+    var Ring = require('zrender/shape/Ring');
 
     var ecConfig = require('../config');
     var zrUtil = require('zrender/tool/util');
@@ -31,6 +33,7 @@ define(function (require) {
          */
         _buildShape : function () {
             for (var i = 0; i < this.polar.length; i ++) {
+                this._index = i;
                 this.reformOption(this.polar[i]);
 
                 this._queryTarget = [this.polar[i], this.option];
@@ -58,10 +61,7 @@ define(function (require) {
             var length = indicator.length;
             var startAngle = item.startAngle ;
             var dStep = 2 * Math.PI / length;
-            var radius = this.parsePercent(
-                item.radius,
-                Math.min(this.zr.getWidth(), this.zr.getHeight()) / 2
-            );
+            var radius = this._getRadius();
             var __ecIndicator = item.__ecIndicator = [];
             var vector;
 
@@ -74,6 +74,19 @@ define(function (require) {
                     vector : [vector[1], -vector[0]]
                 });
             }
+        },
+
+        /**
+         * 获取外圈的半径
+         *
+         * @return {number}
+         */
+        _getRadius : function () {
+            var item = this.polar[this._index];
+            return this.parsePercent(
+                item.radius,
+                Math.min(this.zr.getWidth(), this.zr.getHeight()) / 2
+            );
         },
 
         /**
@@ -100,7 +113,7 @@ define(function (require) {
                 splitArea, strokeColor, lineWidth, show
             );
             
-            this._addLine(
+            axisLine.show && this._addLine(
                 __ecIndicator, center, axisLine
             );
         },
@@ -109,6 +122,7 @@ define(function (require) {
          * 绘制axisLabel
          */
         _addAxisLabel : function (index) {
+            var accMath = require('../util/accMath');
             var item = this.polar[index];
             var indicator = this.deepQuery(this._queryTarget, 'indicator');
             var __ecIndicator = item.__ecIndicator;
@@ -124,7 +138,7 @@ define(function (require) {
             var theta;
             // var startAngle = this.deepQuery(this._queryTarget, 'startAngle');
             var offset;
-            var precision = this.deepQuery(this._queryTarget, 'precision');
+            var interval;
 
             for (var i = 0; i < indicator.length; i ++) {
                 axisLabel = this.deepQuery(
@@ -134,7 +148,7 @@ define(function (require) {
                 if (axisLabel.show) {
                     style = {};
                     style.textFont = this.getFont();
-                    //Todo: bug fix
+                    
                     style = zrUtil.merge(style, axisLabel);
                     style.lineWidth = style.width;
 
@@ -142,15 +156,15 @@ define(function (require) {
                     value = __ecIndicator[i].value;
                     theta = i / indicator.length * 2 * Math.PI;
                     offset = axisLabel.offset || 10;
+                    interval = axisLabel.interval || 0;
 
-                    for (var j = 1 ; j <= splitNumber; j ++) {
+                    if (!value) {
+                        return;
+                    }
+
+                    for (var j = 1 ; j <= splitNumber; j += interval + 1) {
                         newStyle = zrUtil.merge({}, style);
-                        text = 
-                            j * (value.max - value.min) / splitNumber
-                                + value.min;
-                        if (precision) {
-                            text  = text.toFixed(precision);
-                        }
+                        text = accMath.accAdd(value.min, accMath.accMul(value.step, j));
                         newStyle.text = this.numAddCommas(text);
                         newStyle.x = j * vector[0] / splitNumber 
                                      + Math.cos(theta) * offset + center[0];
@@ -206,7 +220,7 @@ define(function (require) {
                 style.color = textStyle.color;
                 
                 if (typeof name.formatter == 'function') {
-                    style.text = name.formatter(indicator[i].text, i);
+                    style.text = name.formatter.call(this.myChart, indicator[i].text, i);
                 }
                 else if (typeof name.formatter == 'string'){
                     style.text = name.formatter.replace(
@@ -288,15 +302,22 @@ define(function (require) {
             var pointList = [];
             var vector;
             var shape;
-
-            for (var i = 0; i < len; i ++) {
-                vector = __ecIndicator[i].vector;
-                pointList.push(this._mapVector(vector, center, 1.2));
+            var type = item.type;
+            
+            if (type == 'polygon') {
+                for (var i = 0; i < len; i ++) {
+                    vector = __ecIndicator[i].vector;
+                    pointList.push(this._mapVector(vector, center, 1.2));
+                }
+                shape = this._getShape(
+                    pointList, 'fill', 'rgba(0,0,0,0)', '', 1
+                );
+            } else if (type == 'circle') {
+                shape = this._getCircle(
+                    '', 1, 1.2, center, 'fill', 'rgba(0,0,0,0)'
+                );
             }
             
-            shape = this._getShape(
-                pointList, 'fill', 'rgba(0,0,0,0)', '', 1
-            );
             return shape;
         },
 
@@ -318,15 +339,24 @@ define(function (require) {
             var scale;
             var scale1;
             var pointList;
+            var type = this.deepQuery(this._queryTarget, 'type');
 
             for (var i = 0; i < splitNumber ; i ++ ) {
                 scale = (splitNumber - i) / splitNumber;
-                pointList = this._getPointList(__ecIndicator, scale, center);
                 
                 if (show) {
-                    shape = this._getShape(
-                        pointList, 'stroke', '', strokeColor, lineWidth
-                    );
+                    if (type == 'polygon') {
+                        pointList = this._getPointList(
+                            __ecIndicator, scale, center);
+                        shape = this._getShape(
+                            pointList, 'stroke', '', strokeColor, lineWidth
+                        );
+                    } else if (type == 'circle') {
+                        shape = this._getCircle(
+                            strokeColor, lineWidth, scale, center, 'stroke'
+                        );
+                    }
+                    
                     this.shapeList.push(shape);
                 }
 
@@ -337,6 +367,63 @@ define(function (require) {
                     ); 
                 }  
             }
+        },
+
+        /**
+         * 绘制圆
+         *
+         * @param {string} strokeColor
+         * @param {number} lineWidth
+         * @param {number} scale
+         * @param {Array.<number>} center
+         * @param {string} brushType
+         * @param {string} color
+         * @return {Circle}
+         */
+        _getCircle : function (
+            strokeColor, lineWidth, scale, center, brushType, color
+        ) {
+            var radius = this._getRadius();
+            return new Circle({
+                zlevel : this._zlevelBase,
+                style: {
+                    x: center[0],
+                    y: center[1],
+                    r: radius * scale,
+                    brushType: brushType,
+                    strokeColor: strokeColor,
+                    lineWidth: lineWidth,
+                    color: color
+                },
+                hoverable : false,
+                draggable : false
+            });
+        },
+
+        /**
+         * 绘制圆环
+         *
+         * @param {string} color  间隔颜色
+         * @param {number} scale0  小圆的scale
+         * @param {number} scale1  大圆的scale
+         * @param {Array.<number>} center  圆点
+         * @return {Ring}
+         */
+        _getRing : function (color, scale0, scale1, center) {
+            var radius = this._getRadius();
+            return new Ring({
+                zlevel : this._zlevelBase,
+                style : {
+                    x : center[0],
+                    y : center[1],
+                    r : scale0 * radius,
+                    r0 : scale1 * radius,
+                    color : color,
+                    brushType : 'fill'
+                },
+                hoverable : false,
+                draggable : false 
+            });
         },
 
         /**
@@ -367,13 +454,10 @@ define(function (require) {
          * @param {string} 颜色
          * @param {string} 描边颜色
          * @param {number} 线条宽度
-         * @param {boolean=} hoverable
-         * @param {boolean=} draggable
          * @return {Object} 绘制的图形对象
          */ 
         _getShape : function (
-            pointList, brushType, color, strokeColor, lineWidth, 
-            hoverable, draggable
+            pointList, brushType, color, strokeColor, lineWidth
         ) {
             return new PolygonShape({
                 zlevel : this._zlevelBase,
@@ -384,8 +468,8 @@ define(function (require) {
                     strokeColor : strokeColor,
                     lineWidth   : lineWidth
                 },
-                hoverable : hoverable || false,
-                draggable : draggable || false
+                hoverable : false,
+                draggable : false
             });
         },
 
@@ -405,6 +489,8 @@ define(function (require) {
             var pointList = [];
             var indLen = __ecIndicator.length;
             var shape;
+
+            var type = this.deepQuery(this._queryTarget, 'type');
             
             if (typeof colorArr == 'string') {
                 colorArr = [colorArr];
@@ -412,22 +498,26 @@ define(function (require) {
             colorLen = colorArr.length;
             color = colorArr[ colorInd % colorLen];
 
-            for (var i = 0; i < indLen ; i ++) {
-                pointList = [];
-                vector = __ecIndicator[i].vector;
-                vector1 = __ecIndicator[(i + 1) % indLen].vector;
+            if (type == 'polygon') {
+                for (var i = 0; i < indLen ; i ++) {
+                    pointList = [];
+                    vector = __ecIndicator[i].vector;
+                    vector1 = __ecIndicator[(i + 1) % indLen].vector;
 
-                pointList.push(this._mapVector(vector, center, scale));
-                pointList.push(this._mapVector(vector, center, scale1));
-                pointList.push(this._mapVector(vector1, center, scale1));
-                pointList.push(this._mapVector(vector1, center, scale));
+                    pointList.push(this._mapVector(vector, center, scale));
+                    pointList.push(this._mapVector(vector, center, scale1));
+                    pointList.push(this._mapVector(vector1, center, scale1));
+                    pointList.push(this._mapVector(vector1, center, scale));
 
-                shape = this._getShape(
-                    pointList, 'fill', color, '', 1
-                );
+                    shape = this._getShape(
+                        pointList, 'fill', color, '', 1
+                    );
+                    this.shapeList.push(shape);
+                }
+            } else if (type == 'circle') {
+                shape = this._getRing(color, scale, scale1, center);
                 this.shapeList.push(shape);
             }
-            
         },
 
         /**
@@ -527,34 +617,42 @@ define(function (require) {
             var indicator = this.deepQuery(this._queryTarget, 'indicator');
             var len = indicator.length;
             var __ecIndicator = item.__ecIndicator;
-            var value;
             var max;
             var min;
             var data = this._getSeriesData(index);
+            
+            var boundaryGap = item.boundaryGap;
             var splitNumber = item.splitNumber;
+            var scale = item.scale;
 
-            var boundaryGap = this.deepQuery(this._queryTarget, 'boundaryGap');
-            var precision = this.deepQuery(this._queryTarget, 'precision');
-            var power = this.deepQuery(this._queryTarget, 'power');
-            var scale = this.deepQuery(this._queryTarget, 'scale');
-
+            var smartSteps = require('../util/smartSteps');
             for (var i = 0; i < len ; i ++ ) {
                 if (typeof indicator[i].max == 'number') {
                     max = indicator[i].max;
                     min = indicator[i].min || 0;
-                    value = {
-                        max : max,
-                        min : min
-                    };
                 }
                 else {
-                    value = this._findValue(
-                        data, i, splitNumber,
-                        boundaryGap, precision, power, scale
+                    var value = this._findValue(
+                        data, i, splitNumber, boundaryGap
                     );
+                    min = value.min;
+                    max = value.max;
                 }
+                 // 非scale下双正，修正最小值为0
+                if (!scale && min >= 0 && max >= 0) {
+                    min = 0;
+                }
+                // 非scale下双负，修正最大值为0
+                if (!scale && min <= 0 && max <= 0) {
+                    max = 0;
+                }
+                var stepOpt = smartSteps(min, max, splitNumber);
 
-                __ecIndicator[i].value = value;
+                __ecIndicator[i].value = {
+                    min: stepOpt.min,
+                    max: stepOpt.max,
+                    step: stepOpt.step
+                };
             }
         },
 
@@ -568,6 +666,7 @@ define(function (require) {
             var serie;
             var serieData;
             var legend = this.component.legend;
+            var polarIndex;
 
             for (var i = 0; i < this.series.length; i ++) {
                 serie = this.series[i];
@@ -596,23 +695,14 @@ define(function (require) {
          * 如果是多组，使用同一维度的进行比较 选出最大值最小值 
          * 对它们进行处理  
          * @param {Object} serie 的 data
-         * @param {number} 指标的序号
-         * @param {boolean} boundaryGap 两端留白
-         * @param {number} precision 小数精度
-         * @param {number} power 整数精度
-         * @return {Object} 指标的最大值最小值
+         * @param {number} index 指标的序号
+         * @param {number} splitNumber 分段格式
+         * * @param {boolean} boundaryGap 两端留白
          */ 
-        _findValue : function (
-            data, index, splitNumber, boundaryGap, precision, power, scale
-        ) {
+        _findValue : function (data, index, splitNumber, boundaryGap) {
             var max;
             var min;
             var value;
-            var delta;
-            var str;
-            var len = 0;
-            var max0;
-            var min0;
             var one;
 
             if (!data || data.length === 0) {
@@ -644,127 +734,27 @@ define(function (require) {
                 }
             }
 
-            if (data.length != 1) {
-                if (scale) {
-                    delta = this._getDelta(
-                        max, min, splitNumber, precision, power
-                    );
-
-                    if (delta >= 1) {
-                        min = Math.floor(min / delta) * delta - delta;
-                    }
-                    else if (delta === 0) {
-                        if (max > 0) {
-                            min0 = 0;
-                            max0 = 2 * max;
-                        }
-                        else if (max === 0) {
-                            min0 = 0;
-                            max0 = 100;
-                        }
-                        else {
-                            max0 = 0;
-                            min0 = 2 * min;
-                        }
-
-                        return {
-                            max : max0,
-                            min : min0
-                        };
-                    }
-                    else {
-                        str = (delta + '').split('.')[1];
-                        len = str.length;
-                        min = Math.floor(
-                                min * Math.pow(10, len)) / Math.pow(10, len
-                              ) - delta;
-                    }
-
-                    if (Math.abs(min) <= delta) {
-                        min = 0;
-                    }
-                    
-                    max = min + Math.floor(delta * Math.pow(10, len) 
-                        * (splitNumber + 1)) / Math.pow(10, len) ;
+            var gap = Math.abs(max - min);
+            min = min - Math.abs(gap * boundaryGap[0]);
+            max = max + Math.abs(gap * boundaryGap[1]);
+            if (min === max) {
+                if (max === 0) {
+                    // 修复全0数据
+                    max = 1;
                 }
-                else {
-                    min = min > 0 ? 0 : min;
+                // 修复最大值==最小值时数据整形
+                else if (max > 0) {
+                    min = max / splitNumber;
                 }
-            }
-
-            if (boundaryGap) {
-                max = max > 0 ? max * 1.2 : max * 0.8;
-                min = min > 0 ? min * 0.8 : min * 1.2;
+                else { // max < 0
+                    max = max / splitNumber;
+                }
             }
 
             return {
                 max : max,
                 min : min
             };
-        },
-
-        /**
-         * 获取最大值与最小值中间比较合适的差值
-         * @param {number} max;
-         * @param {number} min
-         * @param {number} precision 小数精度
-         * @param {number} power 整数精度
-         * @return {number} delta
-         */
-        _getDelta : function (max , min, splitNumber, precision, power) {
-            var delta = (max - min) / splitNumber;
-            var str;
-            var n;
-
-            if (delta > 1) {
-                if (!power) {
-                    str = (delta + '').split('.')[0];
-                    n = str.length;
-                    if (str.charAt(0) >= 5) {
-                        return Math.pow(10, n);
-                    }
-                    else {
-                        return (str.charAt(0) - 0 + 1 ) * Math.pow(10, n - 1);
-                    }
-                }
-                else {
-                    delta = Math.ceil(delta);
-                    if (delta % power > 0) {
-                        return (Math.ceil(delta / power) + 1) * power;
-                    }
-                    else {
-                        return delta;
-                    }
-                }
-            }
-            else if (delta == 1) {
-                return 1;
-            }
-            else if (delta === 0) {
-                return 0;
-            } 
-            else {
-                if (!precision) {
-                    str = (delta + '').split('.')[1];
-                    n = 0;
-                    while (str[n] == '0') {
-                        n ++ ;
-                    }
-
-                    if (str[n] >= 5) {
-                        return '0.' + str.substring(0, n + 1) - 0 
-                            + 1 / Math.pow(10, n);
-                    }
-                    else {
-                        return '0.' + str.substring(0, n + 1) - 0 
-                            + 1 / Math.pow(10, n + 1);
-                    }
-                } 
-                else {
-                    return Math.ceil(delta * Math.pow(10, precision)) 
-                        / Math.pow(10, precision);
-                }
-            }
         },
 
         /**
@@ -847,7 +837,6 @@ define(function (require) {
             var len;
             var angle;
             var finalAngle;
-            var zrSize = Math.min(this.zr.getWidth(), this.zr.getHeight()) / 2;
             for (var i = 0 ; i < this.polar.length; i ++) {
                 item = this.polar[i];
                 center = this.getCenter(i);
@@ -857,7 +846,7 @@ define(function (require) {
                         valueIndex : 0
                     };
                 }
-                radius = this.parsePercent(item.radius, zrSize);
+                radius = this._getRadius();
                 startAngle = item.startAngle;
                 indicator = item.indicator;
                 len = indicator.length;

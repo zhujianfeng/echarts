@@ -15,6 +15,7 @@ define(function (require) {
 
     var ecConfig = require('../config');
     var zrUtil = require('zrender/tool/util');
+    var zrEvent = require('zrender/tool/event');
     var zrArea = require('zrender/tool/area');
     var zrColor = require('zrender/tool/color');
 
@@ -45,10 +46,18 @@ define(function (require) {
         self._dataRangeSelected = function(param) {
             return self.__dataRangeSelected(param);
         };
+        self._dispatchHoverLink = function(param) {
+            return self.__dispatchHoverLink(param);
+        };
+        self._onhoverlink = function(params) {
+            return self.__onhoverlink(params);
+        };
         this._selectedMap = {};
         this._range = {};
         
         this.refresh(option);
+        
+        messageCenter.bind(ecConfig.EVENT.HOVER, this._onhoverlink);
     }
     
     DataRange.prototype = {
@@ -66,9 +75,11 @@ define(function (require) {
             else {
                 this._buildItem();
             }
-
-            for (var i = 0, l = this.shapeList.length; i < l; i++) {
-                this.zr.addShape(this.shapeList[i]);
+            
+            if (this.dataRangeOption.show) {
+                for (var i = 0, l = this.shapeList.length; i < l; i++) {
+                    this.zr.addShape(this.shapeList[i]);
+                }
             }
             
             this._syncShapeFromRange();
@@ -126,7 +137,7 @@ define(function (require) {
 
             for (var i = 0; i < dataLength; i++) {
                 itemName = data[i];
-                color = this.getColor((dataLength - i) * this._gap + this.dataRangeOption.min);
+                color = this.getColorByIndex(i);
                 // 图形
                 itemShape = this._getItemShape(
                     lastX, lastY,
@@ -134,6 +145,7 @@ define(function (require) {
                     (this._selectedMap[i] ? color : '#ccc')
                 );
                 itemShape._idx = i;
+                itemShape.onmousemove = this._dispatchHoverLink;
                 itemShape.onclick = this._dataRangeSelected;
                 this.shapeList.push(new RectangleShape(itemShape));
                 
@@ -281,13 +293,14 @@ define(function (require) {
                 lastY += itemHeight * 10 + this._textGap;
             }
             this.shapeList.push(new RectangleShape(itemShape));
+            // 可计算元素的位置缓存
+            this._calculableLocation = itemShape.style;
             if (this.dataRangeOption.calculable) {
-                // 可计算元素的位置缓存
-                this._calculableLocation = itemShape.style;
                 this._buildFiller();
                 this._bulidMask();
                 this._bulidHandle();
             }
+            this._buildIndicator();
             
             if (!needValueText && this.dataRangeOption.text[1]) {
                 // 最后一个文字
@@ -300,10 +313,85 @@ define(function (require) {
         },
         
         /**
+         * 构建指示器 
+         */
+        _buildIndicator : function() {
+            var x = this._calculableLocation.x;
+            var y = this._calculableLocation.y;
+            var width = this._calculableLocation.width;
+            var height = this._calculableLocation.height;
+            
+            var size = 5;
+            var pointList;
+            var textPosition;
+            if (this.dataRangeOption.orient == 'horizontal') {
+                // 水平
+                if (this.dataRangeOption.y != 'bottom') {
+                    // 手柄统统在下方
+                    pointList = [
+                        [x, y + height],
+                        [x - size, y + height + size],
+                        [x + size, y + height + size]
+                    ];
+                    textPosition = 'bottom';
+                }
+                else {
+                    // 手柄在上方
+                    pointList = [
+                        [x, y],
+                        [x - size, y - size],
+                        [x + size, y - size]
+                    ];
+                    textPosition = 'top';
+                }
+            }
+            else {
+                // 垂直
+                if (this.dataRangeOption.x != 'right') {
+                    // 手柄统统在右侧
+                    pointList = [
+                        [x + width, y],
+                        [x + width + size, y - size],
+                        [x + width + size, y + size]
+                    ];
+                    textPosition = 'right';
+                }
+                else {
+                    // 手柄在左侧
+                    pointList = [
+                        [x, y],
+                        [x - size, y - size],
+                        [x - size, y + size]
+                    ];
+                    textPosition = 'left';
+                }
+            }
+            this._indicatorShape = {
+                style : {
+                    pointList : pointList,
+                    color : '#fff',
+                    __rect : {
+                        x : Math.min(pointList[0][0], pointList[1][0]),
+                        y : Math.min(pointList[0][1], pointList[1][1]),
+                        width : size * (this.dataRangeOption.orient == 'horizontal' ? 2 : 1),
+                        height : size * (this.dataRangeOption.orient == 'horizontal' ? 1 : 2)
+                    }
+                },
+                highlightStyle : {
+                    brushType : 'fill',
+                    textPosition : textPosition,
+                    textColor : this.dataRangeOption.textStyle.color
+                },
+                hoverable: false
+            };
+            this._indicatorShape = new HandlePolygonShape(this._indicatorShape);
+        },
+        
+        /**
          * 构建填充物
          */
         _buildFiller : function () {
-            this._fillerShae = {
+            this._fillerShape = {
                 zlevel : this._zlevelBase + 1,
                 style : {
                     x : this._calculableLocation.x,
@@ -319,10 +407,11 @@ define(function (require) {
                 draggable : true,
                 ondrift : this._ondrift,
                 ondragend : this._ondragend,
+                onmousemove : this._dispatchHoverLink,
                 _type : 'filler'
             };
-            this._fillerShae = new RectangleShape(this._fillerShae);
-            this.shapeList.push(this._fillerShae);
+            this._fillerShape = new RectangleShape(this._fillerShape);
+            this.shapeList.push(this._fillerShape);
         },
         
         /**
@@ -951,21 +1040,21 @@ define(function (require) {
                 // 非默认满值同步一下图形
                 if (this.dataRangeOption.orient == 'horizontal') {
                     // 横向
-                    var width = this._fillerShae.style.width;
-                    this._fillerShae.style.x +=
+                    var width = this._fillerShape.style.width;
+                    this._fillerShape.style.x +=
                         width * (100 - this._range.start) / 100;
-                    this._fillerShae.style.width = 
+                    this._fillerShape.style.width = 
                         width * (this._range.start - this._range.end) / 100;
                 }
                 else {
                     // 纵向
-                    var height = this._fillerShae.style.height;
-                    this._fillerShae.style.y +=
+                    var height = this._fillerShape.style.height;
+                    this._fillerShape.style.y +=
                         height * (100 - this._range.start) / 100;
-                    this._fillerShae.style.height = 
+                    this._fillerShape.style.height = 
                         height * (this._range.start - this._range.end) / 100;
                 }
-                this.zr.modShape(this._fillerShae.id);
+                this.zr.modShape(this._fillerShape.id);
                 this._syncHandleShape();
             }
         },
@@ -977,11 +1066,11 @@ define(function (require) {
             var height = this._calculableLocation.height;
             
             if (this.dataRangeOption.orient == 'horizontal') {
-                this._startShape.style.x = this._fillerShae.style.x;
+                this._startShape.style.x = this._fillerShape.style.x;
                 this._startMask.style.width = this._startShape.style.x - x;
                 
-                this._endShape.style.x = this._fillerShae.style.x
-                                    + this._fillerShae.style.width;
+                this._endShape.style.x = this._fillerShape.style.x
+                                    + this._fillerShape.style.width;
                 this._endMask.style.x = this._endShape.style.x;
                 this._endMask.style.width = x + width - this._endShape.style.x;
                 
@@ -993,11 +1082,11 @@ define(function (require) {
                 );
             }
             else {
-                this._startShape.style.y = this._fillerShae.style.y;
+                this._startShape.style.y = this._fillerShape.style.y;
                 this._startMask.style.height = this._startShape.style.y - y;
                 
-                this._endShape.style.y = this._fillerShae.style.y
-                                    + this._fillerShae.style.height;
+                this._endShape.style.y = this._fillerShape.style.y
+                                    + this._fillerShape.style.height;
                 this._endMask.style.y = this._endShape.style.y;
                 this._endMask.style.height = y + height - this._endShape.style.y;
                 
@@ -1033,8 +1122,8 @@ define(function (require) {
                     a = b;
                     this._startShape.style.x = a;
                 }
-                this._fillerShae.style.x = a;
-                this._fillerShae.style.width = b - a;
+                this._fillerShape.style.x = a;
+                this._fillerShape.style.width = b - a;
                 this._startMask.style.width = a - x;
                 this._endMask.style.x = b;
                 this._endMask.style.width = x + width - b;
@@ -1055,8 +1144,8 @@ define(function (require) {
                     a = b;
                     this._startShape.style.y = a;
                 }
-                this._fillerShae.style.y = a;
-                this._fillerShae.style.height = b - a;
+                this._fillerShape.style.y = a;
+                this._fillerShape.style.height = b - a;
                 this._startMask.style.height = a - y;
                 this._endMask.style.y = b;
                 this._endMask.style.height = y + height - b;
@@ -1103,7 +1192,7 @@ define(function (require) {
             this.zr.modShape(this._endShape.id);
             this.zr.modShape(this._startMask.id);
             this.zr.modShape(this._endMask.id);
-            this.zr.modShape(this._fillerShae.id);
+            this.zr.modShape(this._fillerShape.id);
             this.zr.refresh();
         },
 
@@ -1129,6 +1218,88 @@ define(function (require) {
             this._selectedMap[idx] = !this._selectedMap[idx];
             this.messageCenter.dispatch(ecConfig.EVENT.REFRESH, null, null, this.myChart);
         },
+        
+        /**
+         * 产生hover link事件 
+         */
+        __dispatchHoverLink : function(param) {
+            var valueMin;
+            var valueMax;
+            if (this.dataRangeOption.calculable) {
+                var totalValue = this.dataRangeOption.max - this.dataRangeOption.min;
+                var curValue;
+                if (this.dataRangeOption.orient == 'horizontal') {
+                    curValue = (1 - (zrEvent.getX(param.event) - this._calculableLocation.x)
+                               / this._calculableLocation.width)
+                               * totalValue;
+                }
+                else {
+                    curValue = (1 - (zrEvent.getY(param.event) - this._calculableLocation.y)
+                               / this._calculableLocation.height) 
+                               * totalValue;
+                }
+                valueMin = curValue - totalValue * 0.05;
+                valueMax = curValue + totalValue * 0.05;
+            }
+            else {
+                var idx = param.target._idx;
+                valueMax = (this._colorList.length - idx) * this._gap + this.dataRangeOption.min;
+                valueMin = valueMax - this._gap;
+            }
+            
+            this.messageCenter.dispatch(
+                ecConfig.EVENT.DATA_RANGE_HOVERLINK, 
+                param.event,
+                {
+                    valueMin : valueMin,
+                    valueMax : valueMax
+                },
+                this.myChart
+            );
+            
+            // console.log(param,curValue);
+            return;
+        },
+        
+        __onhoverlink: function(param) {
+            if (this.dataRangeOption.show
+                && this.dataRangeOption.hoverLink
+                && this._indicatorShape
+                && param 
+                && param.seriesIndex != null && param.dataIndex != null
+            ) {
+                var curValue = param.value;
+                if (isNaN(curValue)) {
+                    return;
+                }
+                if (curValue < this.dataRangeOption.min) {
+                    curValue = this.dataRangeOption.min;
+                }
+                else if (curValue > this.dataRangeOption.max) {
+                    curValue = this.dataRangeOption.max;
+                }
+                
+                if (this.dataRangeOption.orient == 'horizontal') {
+                    this._indicatorShape.position = [
+                        (this.dataRangeOption.max - curValue) 
+                        / (this.dataRangeOption.max - this.dataRangeOption.min)
+                        * this._calculableLocation.width,
+                        0
+                    ];
+                }
+                else {
+                    this._indicatorShape.position = [
+                        0,
+                        (this.dataRangeOption.max - curValue)
+                        / (this.dataRangeOption.max - this.dataRangeOption.min)
+                        * this._calculableLocation.height
+                    ];
+                }
+                this._indicatorShape.style.text = param.value;
+                this._indicatorShape.style.color = this.getColor(curValue);
+                this.zr.addHoverShape(this._indicatorShape);
+            }
+        },
 
         _textFormat : function(valueStart, valueEnd) {
             valueStart = valueStart.toFixed(this.dataRangeOption.precision);
@@ -1140,7 +1311,9 @@ define(function (require) {
                                                          .replace('{value2}', valueEnd);
                 }
                 else if (typeof this.dataRangeOption.formatter == 'function') {
-                    return this.dataRangeOption.formatter(valueStart, valueEnd);
+                    return this.dataRangeOption.formatter.call(
+                        this.myChart, valueStart, valueEnd
+                    );
                 }
             }
             
@@ -1163,6 +1336,10 @@ define(function (require) {
                     this.option.dataRange.padding
                 );
                 this.dataRangeOption = this.option.dataRange;
+                if (!this.myChart.canvasSupported) {
+                    // 不支持Canvas的强制关闭实时动画
+                    this.dataRangeOption.realtime = false;
+                }
                 
                 var splitNumber = this.dataRangeOption.splitNumber <= 0 
                                   || this.dataRangeOption.calculable
@@ -1222,6 +1399,10 @@ define(function (require) {
                 return null;
             }
             
+            if (this.dataRangeOption.min == this.dataRangeOption.max) {
+                return this._colorList[0];
+            }
+            
             if (value < this.dataRangeOption.min) {
                 value = this.dataRangeOption.min;
             }
@@ -1230,8 +1411,8 @@ define(function (require) {
             }
             
             if (this.dataRangeOption.calculable) {
-                if (value > this._gap * this._range.start + this.dataRangeOption.min
-                    || value < this._gap * this._range.end + this.dataRangeOption.min) {
+                if (value - (this._gap * this._range.start + this.dataRangeOption.min) > 0.00005
+                    || value - (this._gap * this._range.end + this.dataRangeOption.min) < -0.00005) {
                      return null;
                 }
             }
@@ -1244,6 +1425,7 @@ define(function (require) {
             if (idx == this._colorList.length) {
                 idx--;
             }
+            
             //console.log(value, idx,this._colorList[idx])
             if (this._selectedMap[idx]) {
                 return this._colorList[idx];
@@ -1251,6 +1433,24 @@ define(function (require) {
             else {
                 return null;
             }
+            
+        },
+        
+        getColorByIndex : function (idx) {
+            if (idx >= this._colorList.length) {
+                idx = this._colorList.length - 1;
+            }
+            else if (idx < 0) {
+                idx = 0;
+            }
+            return this._colorList[idx];
+        },
+        
+        /**
+         * 释放后实例不可用
+         */
+        onbeforDispose : function () {
+            this.messageCenter.unbind(ecConfig.EVENT.HOVER, this._onhoverlink);
         }
     };
     

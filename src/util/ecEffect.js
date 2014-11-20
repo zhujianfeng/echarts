@@ -34,8 +34,8 @@ define(function (require) {
                 x : shadowBlur + 1, // 线宽
                 y : shadowBlur + 1,
                 n : shape.style.n,
-                width : shape.style.width * size,
-                height : shape.style.height * size,
+                width : shape.style._width * size,
+                height : shape.style._height * size,
                 lineWidth : 1,
                 strokeColor : color,
                 shadowColor : shadowColor,
@@ -68,7 +68,7 @@ define(function (require) {
         zr.addShape(effectShape);
         
         var devicePixelRatio = window.devicePixelRatio || 1;
-        var offset = (effectShape.style.width / devicePixelRatio - shape.style.width) / 2;
+        var offset = (effectShape.style.width / devicePixelRatio - shape.style._width) / 2;
         effectShape.style.x = shape.style._x - offset;
         effectShape.style.y = shape.style._y - offset;
         var duration = (effect.period + Math.random() * 10) * 100;
@@ -87,13 +87,17 @@ define(function (require) {
             }
         );
         
-        zr.animate(effectShape.id, '', true)
+        zr.animate(effectShape.id, '', effect.loop)
             .when(
                 duration,
                 {
                     scale : [1, 1, centerX, centerY]
                 }
             )
+            .done(function() {
+                shape.effect.show = false;
+                zr.delShape(effectShape.id);
+            })
             .start();
     }
     
@@ -214,7 +218,7 @@ define(function (require) {
                        )));
         if (!shape.style.smooth) {
             // 直线
-            zr.animate(effectShape.id, 'style', true)
+            zr.animate(effectShape.id, 'style', effect.loop)
                 .when(
                     duration,
                     {
@@ -222,6 +226,10 @@ define(function (require) {
                         y : shape._y - offset
                     }
                 )
+                .done(function() {
+                    shape.effect.show = false;
+                    zr.delShape(effectShape.id);
+                })
                 .start();
         }
         else {
@@ -229,7 +237,7 @@ define(function (require) {
             var pointList = shape.style.pointList || shape.getPointList(shape.style);
             var len = pointList.length;
             duration = Math.round(duration / len);
-            var deferred = zr.animate(effectShape.id, 'style', true);
+            var deferred = zr.animate(effectShape.id, 'style', effect.loop);
             var step = Math.ceil(len / 8);
             for (var j = 0; j < len - step; j+= step) {
                 deferred.when(
@@ -247,6 +255,10 @@ define(function (require) {
                     y : pointList[len - 1][1] - offset
                 }
             );
+            deferred.done(function() {
+                shape.effect.show = false;
+                zr.delShape(effectShape.id);
+            });
             deferred.start('spline');
         }
     }

@@ -7,6 +7,7 @@
  */
 define(function (require) {
     var ecConfig = require('../config');
+    var ecData = require('../util/ecData');
     var ecQuery = require('../util/ecQuery');
     var number = require('../util/number');
     var zrUtil = require('zrender/tool/util');
@@ -25,6 +26,7 @@ define(function (require) {
         this.effectList = [];
         
         var self = this;
+        /*
         self.hoverConnect = function (param) {
             var target = (param.target || {}).hoverConnect;
             if (target) {
@@ -32,8 +34,10 @@ define(function (require) {
                 var shape;
                 if (!(target instanceof Array)) {
                     shape = self.getShapeById(target);
-                    self.zr.addHoverShape(shape);
-                    zlevel = Math.min(zlevel, shape.zlevel);
+                    if (shape) {
+                        self.zr.addHoverShape(shape);
+                        zlevel = Math.min(zlevel, shape.zlevel);
+                    }
                 }
                 else {
                     for (var i = 0, l = target.length; i < l; i++) {
@@ -47,18 +51,37 @@ define(function (require) {
                 }
             }
         };
+        */
+        self._onlegendhoverlink = function(param) {
+            if (self.legendHoverLink) {
+                var targetName = param.target;
+                var name;
+                for (var i = self.shapeList.length - 1; i >= 0; i--) {
+                    name = self.type == ecConfig.CHART_TYPE_PIE
+                           || self.type == ecConfig.CHART_TYPE_FUNNEL
+                           ? ecData.get(self.shapeList[i], 'name')
+                           : (ecData.get(self.shapeList[i], 'series') || {}).name;
+                    if (name == targetName && !self.shapeList[i].invisible) {
+                        self.zr.addHoverShape(self.shapeList[i]);
+                    }
+                }
+            }
+        };
+        messageCenter && messageCenter.bind(
+            ecConfig.EVENT.LEGEND_HOVERLINK, this._onlegendhoverlink
+        );
     }
 
     /**
      * 基类方法
      */
     Base.prototype = {
-        canvasSupported : require('zrender/tool/env').canvasSupported,
+        canvasSupported: require('zrender/tool/env').canvasSupported,
         /**
          * 获取zlevel基数配置
          * @param {Object} contentType
          */
-        getZlevelBase : function (contentType) {
+        getZlevelBase: function (contentType) {
             contentType = contentType || this.type + '';
 
             switch (contentType) {
@@ -78,12 +101,14 @@ define(function (require) {
                 case ecConfig.CHART_TYPE_CHORD:
                 case ecConfig.CHART_TYPE_GUAGE:
                 case ecConfig.CHART_TYPE_FUNNEL:
+                case ecConfig.CHART_TYPE_EVENTRIVER:
                     return 2;
 
                 case ecConfig.COMPONENT_TYPE_LEGEND :
                 case ecConfig.COMPONENT_TYPE_DATARANGE:
                 case ecConfig.COMPONENT_TYPE_DATAZOOM :
                 case ecConfig.COMPONENT_TYPE_TIMELINE :
+                case ecConfig.COMPONENT_TYPE_ROAMCONTROLLER :
                     return 4;
 
                 case ecConfig.CHART_TYPE_ISLAND :
@@ -109,7 +134,7 @@ define(function (require) {
          *
          * @return {Object} 修正后的参数
          */
-        reformOption : function (opt) {
+        reformOption: function (opt) {
             return zrUtil.merge(
                        opt || {},
                        zrUtil.clone(this.ecTheme[this.type] || {})
@@ -119,7 +144,7 @@ define(function (require) {
         /**
          * css类属性数组补全，如padding，margin等~
          */
-        reformCssArray : function (p) {
+        reformCssArray: function (p) {
             if (p instanceof Array) {
                 switch (p.length + '') {
                     case '4':
@@ -139,9 +164,9 @@ define(function (require) {
             }
         },
 
-        getShapeById : function(id) {
+        getShapeById: function(id) {
             for (var i = 0, l = this.shapeList.length; i < l; i++) {
-                if (this.shapeList[i].id == id) {
+                if (this.shapeList[i].id === id) {
                     return this.shapeList[i];
                 }
             }
@@ -151,7 +176,7 @@ define(function (require) {
         /**
          * 获取自定义和默认配置合并后的字体设置
          */
-        getFont : function (textStyle) {
+        getFont: function (textStyle) {
             var finalTextStyle = zrUtil.merge(
                 zrUtil.clone(textStyle) || {},
                 this.ecTheme.textStyle
@@ -162,16 +187,25 @@ define(function (require) {
                    + finalTextStyle.fontFamily;
         },
         
-        getItemStyleColor : function (itemColor, seriesIndex, dataIndex, data) {
-            return typeof itemColor == 'function'
-                   ? itemColor(seriesIndex, dataIndex, data) : itemColor;
+        getItemStyleColor: function (itemColor, seriesIndex, dataIndex, data) {
+            return typeof itemColor === 'function'
+                   ? itemColor.call(
+                        this.myChart,
+                        {
+                            seriesIndex: seriesIndex,
+                            series: this.series[seriesIndex],
+                            dataIndex: dataIndex,
+                            data: data
+                        }
+                   )
+                   : itemColor;
             
         },        
         
         // 亚像素优化
-        subPixelOptimize : function (position, lineWidth) {
-            if (lineWidth % 2 == 1) {
-                //position += position == Math.ceil(position) ? 0.5 : 0;
+        subPixelOptimize: function (position, lineWidth) {
+            if (lineWidth % 2 === 1) {
+                //position += position === Math.ceil(position) ? 0.5 : 0;
                 position = Math.floor(position) + 0.5;
             }
             else {
@@ -181,9 +215,13 @@ define(function (require) {
         },
         
         
-        resize : function () {
+        resize: function () {
             this.refresh && this.refresh();
-            this.animationEffect && this.animationEffect();
+            this.clearEffectShape && this.clearEffectShape(true);
+            var self = this;
+            setTimeout(function(){
+                self.animationEffect && self.animationEffect();
+            },200);
         },
 
         /**
@@ -198,20 +236,25 @@ define(function (require) {
         /**
          * 释放后实例不可用
          */
-        dispose : function () {
+        dispose: function () {
+            this.onbeforDispose && this.onbeforDispose();
             this.clear();
             this.shapeList = null;
             this.effectList = null;
+            this.messageCenter && this.messageCenter.unbind(
+                ecConfig.EVENT.LEGEND_HOVERLINK, this._onlegendhoverlink
+            );
+            this.onafterDispose && this.onafterDispose();
         },
         
-        query : ecQuery.query,
-        deepQuery : ecQuery.deepQuery,
-        deepMerge : ecQuery.deepMerge,
+        query: ecQuery.query,
+        deepQuery: ecQuery.deepQuery,
+        deepMerge: ecQuery.deepMerge,
         
-        parsePercent : number.parsePercent,
-        parseCenter : number.parseCenter,
-        parseRadius : number.parseRadius,
-        numAddCommas : number.addCommas
+        parsePercent: number.parsePercent,
+        parseCenter: number.parseCenter,
+        parseRadius: number.parseRadius,
+        numAddCommas: number.addCommas
     };
     
     return Base;
