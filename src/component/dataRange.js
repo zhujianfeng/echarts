@@ -519,12 +519,12 @@ define(function (require) {
                     pointListStart = [
                         [x, y],
                         [x + width + textHeight, y],
-                        [x + width + textHeight, y - textHeight],
+                        [x + width + textHeight, y - 1],
                         [x + width, y - 1],
                         [x, y - 1]
                     ];
                     textXStart = x + width + textWidth / 2 + textHeight / 2;
-                    textYStart = y - textHeight / 2;
+                    textYStart = y;
                     coverRectStart = {
                         x : x + width,
                         y : y - textHeight,
@@ -535,12 +535,12 @@ define(function (require) {
                     pointListEnd = [
                         [x, y + height],
                         [x + width + textHeight, y + height],
-                        [x + width + textHeight, y + textHeight + height],
+                        [x + width + textHeight, y + 1 + height],
                         [x + width, y + 1 + height],
                         [x, y + height + 1]
                     ];
                     textXEnd = textXStart;
-                    textYEnd = y  + height + textHeight / 2;
+                    textYEnd = y  + height;
                     coverRectEnd = {
                         x : x + width,
                         y : y + height,
